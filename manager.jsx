@@ -1,20 +1,69 @@
 function TeamOverviewTable() {
-  const empById = (id) => window.DATA.EMPLOYEES.find(e => e.id === id);
-  const projById = (id) => window.DATA.PROJECTS.find(p => p.id === id);
+  const [teamData, setTeamData] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const projById = (id) => (window.DATA.PROJECTS || []).find(p => p.id === id);
 
-  const statusBadge = (s) => {
-    if (s === 'working') return <span className="badge success"><span className="dot"/>Working</span>;
-    if (s === 'break') return <span className="badge warning"><span className="dot"/>On break</span>;
-    if (s === 'leave') return <span className="badge"><span className="dot"/>On leave</span>;
-    return <span className="badge">Off</span>;
+  const today = new Date().toISOString().split('T')[0];
+
+  // Get Monday of current week
+  const getMonday = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    d.setDate(diff);
+    return d.toISOString().split('T')[0];
   };
+
+  React.useEffect(() => {
+    Promise.all([
+      window.SupaEntries.teamForDay(today),
+      window.SupaEntries.teamSummary(getMonday(), today),
+      window.SupaProfiles.getAll(),
+    ]).then(([todayEntries, weekEntries, profiles]) => {
+      // Group today hours by user
+      const todayByUser = {};
+      todayEntries.forEach(e => {
+        todayByUser[e.user_id] = (todayByUser[e.user_id] || 0) + parseFloat(e.hours);
+      });
+      // Group week hours by user
+      const weekByUser = {};
+      weekEntries.forEach(e => {
+        weekByUser[e.user_id] = (weekByUser[e.user_id] || 0) + parseFloat(e.hours);
+      });
+      // Last project per user (from today entries)
+      const lastProjByUser = {};
+      todayEntries.forEach(e => { lastProjByUser[e.user_id] = e.project_id; });
+
+      const rows = profiles
+        .filter(p => p.user_type === 'employee')
+        .map(p => ({
+          id:            p.id,
+          name:          p.name,
+          role:          p.role,
+          initials:      p.initials,
+          hoursToday:    todayByUser[p.id] || 0,
+          weekHours:     weekByUser[p.id] || 0,
+          weekTarget:    40,
+          currentProject: lastProjByUser[p.id] || null,
+        }));
+      setTeamData(rows);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const statusBadge = (hoursToday) => {
+    if (hoursToday > 0) return <span className="badge success"><span className="dot"/>Working</span>;
+    return <span className="badge"><span className="dot"/>No entries yet</span>;
+  };
+
+  const todayLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
     <div className="card">
       <div className="card-header">
         <div>
           <h3 className="card-title">Team — today</h3>
-          <div className="card-sub">Live status · Monday, April 20</div>
+          <div className="card-sub">Live from Supabase · {todayLabel}</div>
         </div>
         <div style={{display: 'flex', gap: 6}}>
           <button className="btn btn-sm"><Icon name="filter" size={14}/> All teams</button>
@@ -22,68 +71,107 @@ function TeamOverviewTable() {
         </div>
       </div>
 
-      <div style={{overflowX: 'auto'}}>
-        <table className="team-table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Status</th>
-              <th>Current project</th>
-              <th className="num">Clocked in</th>
-              <th className="num">Today</th>
-              <th>Week progress</th>
-              <th className="num">Week hrs</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {window.DATA.TEAM_TODAY.map(row => {
-              const e = empById(row.emp);
-              const p = projById(row.currentProject);
-              const pct = Math.min(100, (row.weekHours / row.weekTarget) * 100);
-              const over = row.weekHours > row.weekTarget;
-              return (
-                <tr key={row.emp}>
-                  <td>
-                    <div className="team-cell-emp">
-                      <div className="avatar">{e.initials}</div>
-                      <div>
-                        <div className="name">{e.name}</div>
-                        <div className="role">{e.role}</div>
+      {loading ? (
+        <div style={{padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>
+          Loading team data…
+        </div>
+      ) : teamData.length === 0 ? (
+        <div style={{padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>
+          No employee profiles found. Employees need to log in once to appear here.
+        </div>
+      ) : (
+        <div style={{overflowX: 'auto'}}>
+          <table className="team-table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Status</th>
+                <th>Last project logged</th>
+                <th className="num">Today</th>
+                <th>Week progress</th>
+                <th className="num">Week hrs</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {teamData.map(row => {
+                const p = projById(row.currentProject);
+                const pct = Math.min(100, (row.weekHours / row.weekTarget) * 100);
+                const over = row.weekHours > row.weekTarget;
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <div className="team-cell-emp">
+                        <div className="avatar">{row.initials}</div>
+                        <div>
+                          <div className="name">{row.name}</div>
+                          <div className="role">{row.role}</div>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td>{statusBadge(row.status)}</td>
-                  <td style={{color: 'var(--text-muted)'}}>{p?.name || '—'}</td>
-                  <td className="num" style={{fontFamily: 'var(--font-mono)'}}>{row.clockedIn}</td>
-                  <td className="num">{row.hoursToday.toFixed(2)}</td>
-                  <td>
-                    <div className={`util-bar ${over ? 'over' : ''}`}>
-                      <span style={{width: `${pct}%`}}/>
-                    </div>
-                  </td>
-                  <td className="num">{row.weekHours.toFixed(1)} / {row.weekTarget}</td>
-                  <td><button className="btn btn-ghost btn-sm"><Icon name="more" size={14}/></button></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                    </td>
+                    <td>{statusBadge(row.hoursToday)}</td>
+                    <td style={{color: 'var(--text-muted)'}}>{p?.name || row.currentProject || '—'}</td>
+                    <td className="num">{row.hoursToday.toFixed(2)}h</td>
+                    <td>
+                      <div className={`util-bar ${over ? 'over' : ''}`}>
+                        <span style={{width: `${pct}%`}}/>
+                      </div>
+                    </td>
+                    <td className="num">{row.weekHours.toFixed(1)} / {row.weekTarget}</td>
+                    <td><button className="btn btn-ghost btn-sm"><Icon name="more" size={14}/></button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
 function ManagerStats() {
-  const stats = [
-    { label: 'On shift now', value: '4', unit: 'of 5', delta: '1 on leave today', deltaClass: '' },
-    { label: 'Team hrs today', value: '25.75', unit: 'hrs', delta: 'Target 40', deltaClass: '' },
-    { label: 'Hrs this week', value: '155.5', unit: '/ 200', delta: '77.8% utilization', deltaClass: 'up' },
-    { label: 'Pending approvals', value: '3', unit: '', delta: '2 timesheets · 1 leave', deltaClass: '' },
+  const [stats, setStats] = React.useState({
+    activeToday: '—', totalToday: '—', weekHrs: '—', util: '—', empCount: 0,
+  });
+
+  React.useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const getMonday = () => {
+      const d = new Date(); const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      d.setDate(diff); return d.toISOString().split('T')[0];
+    };
+    Promise.all([
+      window.SupaEntries.teamForDay(today),
+      window.SupaEntries.teamSummary(getMonday(), today),
+      window.SupaProfiles.getAll(),
+    ]).then(([todayRows, weekRows, profiles]) => {
+      const employees = profiles.filter(p => p.user_type === 'employee');
+      const activeUsers = new Set(todayRows.map(e => e.user_id)).size;
+      const todayHrs = todayRows.reduce((s, e) => s + parseFloat(e.hours), 0);
+      const weekHrs = weekRows.reduce((s, e) => s + parseFloat(e.hours), 0);
+      const weekTarget = employees.length * 40;
+      const util = weekTarget > 0 ? Math.round((weekHrs / weekTarget) * 100) : 0;
+      setStats({
+        activeToday: String(activeUsers),
+        totalToday: todayHrs.toFixed(1),
+        weekHrs: weekHrs.toFixed(1),
+        util: util + '%',
+        empCount: employees.length,
+      });
+    }).catch(() => {});
+  }, []);
+
+  const rows = [
+    { label: 'Active today',    value: stats.activeToday, unit: `of ${stats.empCount}`, delta: 'Logged entries today',   deltaClass: '' },
+    { label: 'Team hrs today',  value: stats.totalToday,  unit: 'hrs',                  delta: `${stats.empCount * 8}h target`, deltaClass: '' },
+    { label: 'Hrs this week',   value: stats.weekHrs,     unit: 'hrs',                  delta: `${stats.util} utilization`,    deltaClass: 'up' },
+    { label: 'Pending approvals', value: '—',             unit: '',                     delta: 'Coming soon',           deltaClass: '' },
   ];
   return (
     <div className="stats-row">
-      {stats.map(s => (
+      {rows.map(s => (
         <div key={s.label} className="card stat">
           <div className="stat-label">{s.label}</div>
           <div className="stat-value">{s.value}<span className="unit">{s.unit}</span></div>
