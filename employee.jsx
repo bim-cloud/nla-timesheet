@@ -101,24 +101,37 @@ function StatCards({ featuresEnabled }) {
   );
 }
 
-function TodayEntries({ entries, setEntries }) {
+function TodayEntries({ entries, setEntries, userId }) {
   const [draft, setDraft] = useStateEmp({ project: 'dch-f09', type: 'design', title: '', hours: '' });
+  const [saving, setSaving] = useStateEmp(false);
   const total = entries.reduce((s, e) => s + e.hours, 0);
 
-  const addEntry = () => {
+  const addEntry = async () => {
     if (!draft.title || !draft.hours) return;
-    setEntries([...entries, {
-      id: `e${Date.now()}`,
+    const newEntry = {
       project: draft.project,
       type: draft.type,
       title: draft.title,
       notes: '',
       hours: parseFloat(draft.hours),
-    }]);
+    };
+    setSaving(true);
+    // Save to Supabase
+    const saved = await window.SupaEntries.add(userId, newEntry);
+    if (saved) {
+      setEntries([...entries, { ...newEntry, id: saved.id }]);
+    } else {
+      // Fallback: save locally if Supabase fails
+      setEntries([...entries, { ...newEntry, id: `e${Date.now()}` }]);
+    }
     setDraft({ project: draft.project, type: draft.type, title: '', hours: '' });
+    setSaving(false);
   };
 
-  const removeEntry = (id) => setEntries(entries.filter(e => e.id !== id));
+  const removeEntry = async (id) => {
+    setEntries(entries.filter(e => e.id !== id));
+    await window.SupaEntries.remove(id);
+  };
 
   const projById = (id) => window.DATA.PROJECTS.find(p => p.id === id);
   const typeById = (id) => window.DATA.TASK_TYPES.find(t => t.id === id);
@@ -393,7 +406,31 @@ function DesktopAgentBanner() {
 
 function EmployeeView({ featuresEnabled, user }) {
   const [clockState, setClockState] = useStateEmp('working');
-  const [entries, setEntries] = useStateEmp(window.DATA.TODAY_ENTRIES);
+  const [entries, setEntries] = useStateEmp([]);
+  const [entriesLoading, setEntriesLoading] = useStateEmp(true);
+
+  // Load today's entries from Supabase on mount
+  useEffectEmp(() => {
+    if (!user?.id) return;
+    const today = new Date().toISOString().split('T')[0];
+    window.SupaEntries.forDay(user.id, today).then(rows => {
+      // Map Supabase rows to local shape
+      const mapped = rows.map(r => ({
+        id:      r.id,
+        project: r.project_id,
+        type:    r.task_type,
+        title:   r.title,
+        notes:   r.notes || '',
+        hours:   parseFloat(r.hours),
+      }));
+      setEntries(mapped);
+      setEntriesLoading(false);
+    }).catch(() => {
+      // Fallback to sample data if Supabase unreachable
+      setEntries(window.DATA.TODAY_ENTRIES);
+      setEntriesLoading(false);
+    });
+  }, [user?.id]);
   const activity = window.useActivityTracker({ enabled: clockState === 'working', idleThresholdSec: 120 });
   // seed in prior hours for realism
   const baseActive = 6.75 * 3600;
@@ -416,7 +453,7 @@ function EmployeeView({ featuresEnabled, user }) {
       <StatCards featuresEnabled={featuresEnabled} />
 
       <div className="col-8-4">
-        <TodayEntries entries={entries} setEntries={setEntries} />
+        <TodayEntries entries={entries} setEntries={setEntries} userId={user?.id} />
         <WeekBars />
       </div>
 
