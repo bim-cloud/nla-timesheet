@@ -5,7 +5,7 @@ const SESSION_KEY = 'nla_session_v1';
 const RESET_KEY = 'nla_resets_v1';
 
 const SEED_USERS = [
-  { id: 'admin', username: 'admin', password: 'admin123', name: 'James Mathew', role: 'Studio Director', type: 'manager', initials: 'JM', tz: 'Asia/Dubai', tzLabel: 'UAE' },
+  { id: 'admin', username: 'admin', password: 'admin123', name: 'Sanil', role: 'Studio Director', type: 'manager', initials: 'SN', tz: 'Asia/Dubai', tzLabel: 'UAE' },
   { id: 'sanil', username: 'sanil', password: 'welcome123', name: 'Sanil', role: 'Studio Manager', type: 'manager', initials: 'SN', tz: 'Asia/Dubai', tzLabel: 'UAE' },
   { id: 'adithya', username: 'adithya', password: 'welcome123', name: 'Adithya', role: 'Studio Manager', type: 'manager', initials: 'AD', tz: 'Asia/Kolkata', tzLabel: 'IST' },
   { id: 'afsal', username: 'afsal', password: 'welcome123', name: 'Afsal Badrudeen', role: 'BIM Architect', type: 'employee', initials: 'AB', tz: 'Asia/Dubai', tzLabel: 'UAE' },
@@ -181,22 +181,18 @@ function LoginScreen({ onLogin }) {
             )}
           </form>
 
-          <div className="login-hints">
-            <b>Demo credentials</b><br/>
-            Admin: <code>admin</code>, <code>sanil</code>, <code>adithya</code> / <code>welcome123</code> (admin uses admin123)<br/>
-            Employee: <code>afsal</code> / <code>welcome123</code> (or sandra, rivin, mehnas, elbin)
-          </div>
+
         </div>
       </div>
 
       <div className="login-hero">
         <div>
           <div className="hero-kicker">Timesheet · BIM Studio</div>
-          <h2>Track time that reflects real design work.</h2>
+          <h2>Effortless Work Logging</h2>
           <p>
-            Like Revit or AutoCAD, the timer follows your activity — it pauses when
-            your mouse and keyboard go quiet, and resumes the moment you start working
-            again. Honest hours, no babysitting.
+            Built to work quietly alongside you, capturing your design time without
+            distractions or manual input. A seamless, unobtrusive experience that keeps
+            your workflow uninterrupted while ensuring your efforts are consistently reflected.
           </p>
         </div>
         <div className="login-hero-footer">
