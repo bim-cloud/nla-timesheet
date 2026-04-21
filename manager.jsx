@@ -67,7 +67,20 @@ function TeamOverviewTable() {
         </div>
         <div style={{display: 'flex', gap: 6}}>
           <button className="btn btn-sm"><Icon name="filter" size={14}/> All teams</button>
-          <button className="btn btn-sm"><Icon name="download" size={14}/> Export</button>
+          <button
+            className="btn btn-sm"
+            onClick={() => window.exportTeamExcel && window.exportTeamExcel()}
+            style={{display:'flex',alignItems:'center',gap:5}}
+          >
+            <Icon name="download" size={13}/> Excel
+          </button>
+          <button
+            className="btn btn-sm"
+            onClick={() => window.exportTeamPDF && window.exportTeamPDF()}
+            style={{display:'flex',alignItems:'center',gap:5,color:'#102347',borderColor:'#102347'}}
+          >
+            <Icon name="download" size={13}/> PDF
+          </button>
         </div>
       </div>
 
