@@ -348,6 +348,7 @@ function WeeklyGrid({ user }) {
           <button className="btn btn-sm" onClick={() => setWeekOffset(weekOffset + 1)} disabled={isCurrentWeek}>
             <Icon name="chevronR" size={14}/>
           </button>
+          <window.ExportButtons user={user} weekOffset={weekOffset} size="sm" />
           {!submitted && (
             <button className="btn btn-sm btn-primary" onClick={submitWeek} disabled={submitting || grand === 0}>
               <Icon name="send" size={14}/> {submitting ? 'Submitting…' : 'Submit'}
