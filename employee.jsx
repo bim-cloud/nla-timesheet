@@ -302,7 +302,21 @@ function WeeklyGrid({ user }) {
   const submitWeek = async () => {
     if (submitting) return;
     setSubmitting(true);
-    const ok = await window.SupaEntries.submitWeek(user.id, dates[0]);
+
+    // Build week label e.g. "21 Apr – 25 Apr 2026"
+    const s = new Date(dates[0] + 'T00:00:00');
+    const e = new Date(dates[4] + 'T00:00:00');
+    const weekLabel = `${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+
+    const notifyPayload = {
+      employeeName: user.name,
+      employeeRole: user.role || '',
+      weekLabel,
+      totalHours: grand.toFixed(1),
+      mondayDate: dates[0],
+    };
+
+    const ok = await window.SupaEntries.submitWeek(user.id, dates[0], notifyPayload);
     if (ok) setSubmitted(true);
     setSubmitting(false);
   };
