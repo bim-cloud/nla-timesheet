@@ -107,6 +107,75 @@ const SupaEntries = {
     if (error) console.warn('Submit error:', error.message);
   },
 
+
+  // Load all entries for a week grouped by project+day (for weekly grid)
+  async forWeekGrid(userId, mondayDate) {
+    const friday = new Date(mondayDate);
+    friday.setDate(friday.getDate() + 4);
+    const { data, error } = await sb
+      .from('entries')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('date', mondayDate)
+      .lte('date', friday.toISOString().split('T')[0])
+      .order('created_at');
+    if (error) { console.warn('Week grid fetch error:', error.message); return []; }
+    return data || [];
+  },
+
+  // Upsert a grid cell — finds existing grid entry for project+date and updates, or inserts
+  async upsertGridCell(userId, projectId, projectName, date, hours) {
+    // Find existing grid entry for this project+date
+    const { data: existing } = await sb
+      .from('entries')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('date', date)
+      .eq('project_id', projectId)
+      .eq('task_type', 'grid')
+      .maybeSingle();
+
+    if (hours <= 0) {
+      // Delete if exists
+      if (existing?.id) {
+        await sb.from('entries').delete().eq('id', existing.id);
+      }
+      return;
+    }
+
+    if (existing?.id) {
+      // Update
+      await sb.from('entries').update({ hours, title: `Weekly timesheet — ${projectName}` }).eq('id', existing.id);
+    } else {
+      // Insert
+      await sb.from('entries').insert({
+        user_id:      userId,
+        date,
+        project_id:   projectId,
+        project_name: projectName,
+        task_type:    'grid',
+        title:        `Weekly timesheet — ${projectName}`,
+        notes:        '',
+        hours,
+        status:       'draft',
+      });
+    }
+  },
+
+  // Submit all entries for a week
+  async submitWeek(userId, mondayDate) {
+    const friday = new Date(mondayDate);
+    friday.setDate(friday.getDate() + 4);
+    const { error } = await sb
+      .from('entries')
+      .update({ status: 'submitted' })
+      .eq('user_id', userId)
+      .gte('date', mondayDate)
+      .lte('date', friday.toISOString().split('T')[0]);
+    if (error) console.warn('Submit week error:', error.message);
+    return !error;
+  },
+
   // Manager: load all team entries + hours summary for a date range
   async teamSummary(fromDate, toDate) {
     const { data, error } = await sb
