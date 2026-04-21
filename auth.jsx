@@ -148,7 +148,7 @@ function LoginScreen({ onLogin }) {
                 onChange={(e) => setUsername(e.target.value)}
                 autoFocus
                 autoComplete="username"
-                placeholder="e.g. afsal"
+                placeholder="Username"
               />
             </div>
             {!forgot && (
