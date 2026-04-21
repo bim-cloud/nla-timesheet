@@ -176,6 +176,38 @@ const SupaEntries = {
     return !error;
   },
 
+
+  // Get all submitted (pending) timesheets for manager approval
+  async getPendingSubmissions() {
+    const { data, error } = await sb
+      .from('entries')
+      .select('*, profiles(name, role, initials)')
+      .eq('status', 'submitted')
+      .order('created_at', { ascending: false });
+    if (error) { console.warn('Pending fetch error:', error.message); return []; }
+    return data || [];
+  },
+
+  // Approve a list of entry IDs
+  async approveSubmission(entryIds) {
+    const { error } = await sb
+      .from('entries')
+      .update({ status: 'approved' })
+      .in('id', entryIds);
+    if (error) console.warn('Approve error:', error.message);
+    return !error;
+  },
+
+  // Reject a list of entry IDs (set back to draft so employee can resubmit)
+  async rejectSubmission(entryIds) {
+    const { error } = await sb
+      .from('entries')
+      .update({ status: 'draft' })
+      .in('id', entryIds);
+    if (error) console.warn('Reject error:', error.message);
+    return !error;
+  },
+
   // Manager: load all team entries + hours summary for a date range
   async teamSummary(fromDate, toDate) {
     const { data, error } = await sb
