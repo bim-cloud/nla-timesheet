@@ -162,8 +162,8 @@ const SupaEntries = {
     }
   },
 
-  // Submit all entries for a week
-  async submitWeek(userId, mondayDate) {
+  // Submit all entries for a week + trigger email notification
+  async submitWeek(userId, mondayDate, notifyPayload) {
     const friday = new Date(mondayDate);
     friday.setDate(friday.getDate() + 4);
     const { error } = await sb
@@ -172,8 +172,17 @@ const SupaEntries = {
       .eq('user_id', userId)
       .gte('date', mondayDate)
       .lte('date', friday.toISOString().split('T')[0]);
-    if (error) console.warn('Submit week error:', error.message);
-    return !error;
+    if (error) { console.warn('Submit week error:', error.message); return false; }
+
+    // Fire email notification (non-blocking — don't fail submission if email fails)
+    if (notifyPayload) {
+      try {
+        await sb.functions.invoke('notify-submission', { body: notifyPayload });
+      } catch (e) {
+        console.warn('Email notification failed (non-critical):', e.message);
+      }
+    }
+    return true;
   },
 
 
