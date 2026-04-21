@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=1200"/>
+<title>Nature Timesheet Agent — Windows</title>
+<link rel="stylesheet" href="agent.css"/>
+</head>
+<body>
+
+<div class="win-desktop">
+  <div class="win-window" id="agent-window">
+
+    <!-- Windows titlebar -->
+    <div class="win-titlebar">
+      <div class="win-title">
+        <img src="assets/nature-logo.png" alt=""/>
+        Nature Timesheet Agent
+      </div>
+      <div class="win-buttons">
+        <button class="win-btn" title="Minimize">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6h8" stroke="currentColor" strokeWidth="1"/></svg>
+        </button>
+        <button class="win-btn" title="Maximize">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="2" width="8" height="8" stroke="currentColor" strokeWidth="1" fill="none"/></svg>
+        </button>
+        <button class="win-btn close" title="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.2"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="agent-layout">
+
+      <!-- Left nav -->
+      <nav class="agent-nav">
+        <div class="agent-brand">
+          <img src="assets/nature-logo.png" alt=""/>
+          <div class="txt">Timesheet<span>v1.2.4 · Connected</span></div>
+        </div>
+
+        <button class="agent-nav-item active" data-tab="today">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          Today
+        </button>
+        <button class="agent-nav-item" data-tab="apps">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Tracked Apps
+        </button>
+        <button class="agent-nav-item" data-tab="sync">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><path d="M21 4v5h-5"/></svg>
+          Sync &amp; History
+        </button>
+        <button class="agent-nav-item" data-tab="settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/></svg>
+          Settings
+        </button>
+
+        <div class="agent-auth">
+          <div class="av">AB</div>
+          <div>
+            <div class="n">Afsal Badrudeen</div>
+            <div class="r">@afsal · Signed in</div>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Main -->
+      <main class="agent-main">
+
+        <!-- TODAY TAB -->
+        <section class="tab-panel" data-panel="today">
+          <div class="agent-header">
+            <div>
+              <h1>Today · Monday, April 20</h1>
+              <div class="sub">Automatically tracking which app is active on your PC</div>
+            </div>
+            <span class="agent-status-pill"><span class="dot"/>Tracking · Revit 2024 is foreground</span>
+          </div>
+
+          <div class="today-card">
+            <div>
+              <div class="lbl">Active time today</div>
+              <div class="val" id="today-total">06:47:22</div>
+              <div class="sub">Across 4 applications · last synced 2 min ago</div>
+            </div>
+            <button class="sync-btn" id="sync-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><path d="M21 4v5h-5"/></svg>
+              Sync to dashboard
+            </button>
+          </div>
+
+          <div class="section-label">Applications detected today</div>
+
+          <div class="app-list">
+            <div class="app-row">
+              <div class="app-icon revit">R</div>
+              <div>
+                <div class="app-name">Autodesk Revit 2024</div>
+                <div class="app-sub">DCH_F09_Landscape_v12.rvt · Active now</div>
+              </div>
+              <div class="app-project">
+                Dubai Creek Harbor F09
+                <div class="p-sub">DCH-F09 · Design / drafting</div>
+              </div>
+              <div class="app-hours">
+                03:12:40
+                <div class="sub">3h 12m · 47% of day</div>
+              </div>
+              <span class="app-status active"><span class="d"/>Active</span>
+            </div>
+
+            <div class="app-row">
+              <div class="app-icon autocad">A</div>
+              <div>
+                <div class="app-name">AutoCAD 2024</div>
+                <div class="app-sub">Site_Grading_Rev3.dwg · Background</div>
+              </div>
+              <div class="app-project">
+                Dubai Creek Harbor F02
+                <div class="p-sub">DCH-F02 · Design / drafting</div>
+              </div>
+              <div class="app-hours">
+                01:18:05
+                <div class="sub">1h 18m · 19% of day</div>
+              </div>
+              <span class="app-status idle"><span class="d"/>Idle 4m</span>
+            </div>
+
+            <div class="app-row">
+              <div class="app-icon navis">N</div>
+              <div>
+                <div class="app-name">Navisworks Manage 2024</div>
+                <div class="app-sub">MIP_2C_Coordination.nwd</div>
+              </div>
+              <div class="app-project">
+                Mid Island Parkway 2C
+                <div class="p-sub">MIP-2C · Review / QA</div>
+              </div>
+              <div class="app-hours">
+                00:54:20
+                <div class="sub">54m · 13% of day</div>
+              </div>
+              <span class="app-status closed"><span class="d"/>Closed</span>
+            </div>
+
+            <div class="app-row">
+              <div class="app-icon teams">T</div>
+              <div>
+                <div class="app-name">Microsoft Teams</div>
+                <div class="app-sub">Emaar landscape review · Meeting</div>
+              </div>
+              <div class="app-project">
+                Dubai Creek Harbor F02
+                <div class="p-sub">Client meeting (auto-assigned)</div>
+              </div>
+              <div class="app-hours">
+                01:02:17
+                <div class="sub">1h 02m · 15% of day</div>
+              </div>
+              <span class="app-status closed"><span class="d"/>Ended</span>
+            </div>
+
+            <div class="app-row">
+              <div class="app-icon civil3d">C</div>
+              <div>
+                <div class="app-name">Civil 3D 2024</div>
+                <div class="app-sub">MIP_2A_Drainage.dwg</div>
+              </div>
+              <div class="app-project">
+                Mid Island Parkway 2A
+                <div class="p-sub">MIP-2A · Design / drafting</div>
+              </div>
+              <div class="app-hours">
+                00:20:00
+                <div class="sub">20m · 5% of day</div>
+              </div>
+              <span class="app-status closed"><span class="d"/>Closed</span>
+            </div>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-card">
+              <h3>Activity rules · Autodesk-style</h3>
+              <div class="kv"><span class="k">Idle threshold</span><span class="v">2 min</span></div>
+              <div class="kv"><span class="k">Tracks foreground window</span><span class="v">Yes</span></div>
+              <div class="kv"><span class="k">Mouse &amp; keyboard monitored</span><span class="v">Yes</span></div>
+              <div class="kv"><span class="k">Document titles captured</span><span class="v">Yes (for project match)</span></div>
+            </div>
+            <div class="info-card">
+              <h3>Sync status</h3>
+              <div class="kv"><span class="k">Dashboard</span><span class="v" style="color:#15803d;">● Online</span></div>
+              <div class="kv"><span class="k">Last sync</span><span class="v">1:42:18 PM</span></div>
+              <div class="kv"><span class="k">Pending events</span><span class="v">0</span></div>
+              <div class="kv"><span class="k">Account</span><span class="v">@afsal</span></div>
+            </div>
+          </div>
+
+          <div class="tray-note">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+            <div><b>Runs quietly in the system tray.</b> The agent starts with Windows, tracks only the apps you approve, and pauses when your PC is locked. No keystrokes or screen content is captured — only app name, document title, and focus/idle state.</div>
+          </div>
+        </section>
+
+        <!-- APPS TAB -->
+        <section class="tab-panel" data-panel="apps" style="display:none;">
+          <div class="agent-header">
+            <div>
+              <h1>Tracked applications</h1>
+              <div class="sub">Control which apps count toward your timesheet</div>
+            </div>
+          </div>
+
+          <div class="app-list">
+            <div class="toggle-row" style="padding:14px 16px;">
+              <div>
+                <div class="tlabel">Autodesk Revit (2020 – 2025)</div>
+                <div class="tsub">Includes Revit LT · Document title used for project matching</div>
+              </div>
+              <div class="sw on"></div>
+            </div>
+            <div class="toggle-row" style="padding:14px 16px; border-top:1px solid #ececec;">
+              <div>
+                <div class="tlabel">AutoCAD / AutoCAD LT</div>
+                <div class="tsub">Includes Architecture and Mechanical toolsets</div>
+              </div>
+              <div class="sw on"></div>
+            </div>
+            <div class="toggle-row" style="padding:14px 16px; border-top:1px solid #ececec;">
+              <div>
+                <div class="tlabel">Navisworks Manage / Freedom</div>
+                <div class="tsub">Coordination and clash review</div>
+              </div>
+              <div class="sw on"></div>
+            </div>
+            <div class="toggle-row" style="padding:14px 16px; border-top:1px solid #ececec;">
+              <div>
+                <div class="tlabel">Civil 3D / InfraWorks</div>
+                <div class="tsub">Civil engineering toolsets</div>
+              </div>
+              <div class="sw on"></div>
+            </div>
+            <div class="toggle-row" style="padding:14px 16px; border-top:1px solid #ececec;">
+              <div>
+                <div class="tlabel">3ds Max / Maya</div>
+                <div class="tsub">Visualization and rendering</div>
+              </div>
+              <div class="sw on"></div>
+            </div>
+            <div class="toggle-row" style="padding:14px 16px; border-top:1px solid #ececec;">
+              <div>
+                <div class="tlabel">Microsoft Teams</div>
+                <div class="tsub">Meeting time auto-logs as "Client meeting"</div>
+              </div>
+              <div class="sw on"></div>
+            </div>
+            <div class="toggle-row" style="padding:14px 16px; border-top:1px solid #ececec;">
+              <div>
+                <div class="tlabel">Microsoft Outlook</div>
+                <div class="tsub">Email and calendar — off by default</div>
+              </div>
+              <div class="sw"></div>
+            </div>
+            <div class="toggle-row" style="padding:14px 16px; border-top:1px solid #ececec;">
+              <div>
+                <div class="tlabel">Word / Excel / PowerPoint</div>
+                <div class="tsub">Documents, reports, specs</div>
+              </div>
+              <div class="sw on"></div>
+            </div>
+            <div class="toggle-row" style="padding:14px 16px; border-top:1px solid #ececec;">
+              <div>
+                <div class="tlabel">Browsers (Chrome / Edge)</div>
+                <div class="tsub">Only logs tabs matching configured project domains</div>
+              </div>
+              <div class="sw"></div>
+            </div>
+          </div>
+
+          <div class="tray-note">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/></svg>
+            <div>Admin can add more tracked apps from the online dashboard → <b>Users &amp; access → App rules</b>.</div>
+          </div>
+        </section>
+
+        <!-- SYNC TAB -->
+        <section class="tab-panel" data-panel="sync" style="display:none;">
+          <div class="agent-header">
+            <div>
+              <h1>Sync &amp; history</h1>
+              <div class="sub">Connection to the online dashboard · past 7 days</div>
+            </div>
+            <span class="agent-status-pill"><span class="dot"/>Online</span>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-card">
+              <h3>Connection</h3>
+              <div class="kv"><span class="k">Dashboard URL</span><span class="v">timesheet.naturela.ae</span></div>
+              <div class="kv"><span class="k">Account</span><span class="v">@afsal</span></div>
+              <div class="kv"><span class="k">Machine</span><span class="v">NLA-WS-07</span></div>
+              <div class="kv"><span class="k">Agent version</span><span class="v">1.2.4</span></div>
+            </div>
+            <div class="info-card">
+              <h3>Sync queue</h3>
+              <div class="kv"><span class="k">Last sync</span><span class="v">1:42:18 PM today</span></div>
+              <div class="kv"><span class="k">Next scheduled</span><span class="v">2:00:00 PM</span></div>
+              <div class="kv"><span class="k">Pending events</span><span class="v">0</span></div>
+              <div class="kv"><span class="k">Offline buffer</span><span class="v">0 MB / 50 MB</span></div>
+            </div>
+          </div>
+
+          <div class="section-label">Recent sync history</div>
+          <div class="app-list">
+            <div class="app-row" style="grid-template-columns: 8px 1fr 120px 100px;">
+              <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;"></div>
+              <div><div class="app-name">Synced 38 events · 42.5 hrs week-to-date</div><div class="app-sub">Mon 1:42 PM · Revit, AutoCAD, Teams</div></div>
+              <div class="app-project">Success</div>
+              <div class="app-hours" style="text-align:right;">1:42 PM</div>
+            </div>
+            <div class="app-row" style="grid-template-columns: 8px 1fr 120px 100px;">
+              <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;"></div>
+              <div><div class="app-name">Synced 24 events · 6h 12m morning session</div><div class="app-sub">Mon 12:00 PM</div></div>
+              <div class="app-project">Success</div>
+              <div class="app-hours" style="text-align:right;">12:00 PM</div>
+            </div>
+            <div class="app-row" style="grid-template-columns: 8px 1fr 120px 100px;">
+              <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;"></div>
+              <div><div class="app-name">Synced 41 events · Friday daily total 7.5 hrs</div><div class="app-sub">Fri 6:04 PM</div></div>
+              <div class="app-project">Success</div>
+              <div class="app-hours" style="text-align:right;">Apr 17</div>
+            </div>
+            <div class="app-row" style="grid-template-columns: 8px 1fr 120px 100px;">
+              <div style="width:8px;height:8px;border-radius:50%;background:#f59e0b;"></div>
+              <div><div class="app-name">Buffered 12 events · network offline</div><div class="app-sub">Thu 2:22 PM — flushed automatically at 2:31 PM</div></div>
+              <div class="app-project">Buffered → Synced</div>
+              <div class="app-hours" style="text-align:right;">Apr 16</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- SETTINGS TAB -->
+        <section class="tab-panel" data-panel="settings" style="display:none;">
+          <div class="agent-header">
+            <div>
+              <h1>Settings</h1>
+              <div class="sub">Agent preferences on this PC</div>
+            </div>
+          </div>
+
+          <div class="info-card" style="margin-bottom:12px;">
+            <h3>Tracking</h3>
+            <div class="toggle-row">
+              <div>
+                <div class="tlabel">Auto-start with Windows</div>
+                <div class="tsub">Runs silently in the system tray on boot</div>
+              </div>
+              <div class="sw on"></div>
+            </div>
+            <div class="toggle-row">
+              <div>
+                <div class="tlabel">Pause when PC is locked</div>
+                <div class="tsub">Timer stops the moment Win+L is pressed</div>
+              </div>
+              <div class="sw on"></div>
+            </div>
+            <div class="toggle-row">
+              <div>
+                <div class="tlabel">Idle detection (2 min threshold)</div>
+                <div class="tsub">Same behavior as Revit's inactivity timer</div>
+              </div>
+              <div class="sw on"></div>
+            </div>
+            <div class="toggle-row">
+              <div>
+                <div class="tlabel">Capture document titles</div>
+                <div class="tsub">Matches open files to projects automatically</div>
+              </div>
+              <div class="sw on"></div>
+            </div>
+          </div>
+
+          <div class="info-card" style="margin-bottom:12px;">
+            <h3>Privacy</h3>
+            <div class="toggle-row">
+              <div>
+                <div class="tlabel">Capture keystrokes or screen content</div>
+                <div class="tsub">Never. The agent cannot do this and never will.</div>
+              </div>
+              <div class="sw" style="opacity:0.4;pointer-events:none;"></div>
+            </div>
+            <div class="toggle-row">
+              <div>
+                <div class="tlabel">Daily summary email</div>
+                <div class="tsub">Get a 6pm recap of your tracked time</div>
+              </div>
+              <div class="sw on"></div>
+            </div>
+          </div>
+
+          <div class="info-card">
+            <h3>About</h3>
+            <div class="kv"><span class="k">Agent version</span><span class="v">1.2.4 (Apr 2026)</span></div>
+            <div class="kv"><span class="k">Platform</span><span class="v">Windows 10 / 11 (x64)</span></div>
+            <div class="kv"><span class="k">Installer size</span><span class="v">42 MB</span></div>
+            <div class="kv"><span class="k">Auto-update channel</span><span class="v">Stable</span></div>
+            <div class="kv"><span class="k">License</span><span class="v">NLA studio (seat 07 of 20)</span></div>
+          </div>
+
+          <div style="margin-top:16px; display:flex; gap:10px;">
+            <button style="padding:9px 16px; border:1px solid #d1d5db; background:#fff; border-radius:7px; font-size:12.5px; cursor:pointer; font-family:inherit;">Check for updates</button>
+            <button style="padding:9px 16px; border:1px solid #d1d5db; background:#fff; border-radius:7px; font-size:12.5px; cursor:pointer; font-family:inherit;">Open log folder</button>
+            <button style="padding:9px 16px; border:1px solid #d1d5db; background:#fff; color:#b91c1c; border-radius:7px; font-size:12.5px; cursor:pointer; font-family:inherit;">Sign out</button>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- Mock Windows taskbar -->
+<div class="win-taskbar">
+  <div class="tb-icon" style="background:transparent;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M3 4h8v8H3zM13 4h8v8h-8zM3 14h8v8H3zM13 14h8v8h-8z"/></svg>
+  </div>
+  <div class="tb-icon">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+  </div>
+  <div class="tb-icon nla" title="Nature Timesheet Agent">
+    <img src="assets/nature-logo.png" style="height:18px;"/>
+  </div>
+  <div class="tb-icon" style="color:#5059c9;background:rgba(80,89,201,0.2);">T</div>
+  <div class="tb-icon" style="color:#0696d7;background:rgba(6,150,215,0.2);">R</div>
+  <div class="tb-icon" style="color:#e51e25;background:rgba(229,30,37,0.2);">A</div>
+  <div class="tb-clock">
+    <div>1:44 PM</div>
+    <div style="color:#bbb;">Mon, Apr 20</div>
+  </div>
+</div>
+
+<script>
+// Tab switching
+document.querySelectorAll('.agent-nav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.agent-nav-item').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-panel').forEach(p => {
+      p.style.display = p.dataset.panel === tab ? 'block' : 'none';
+    });
+  });
+});
+
+// Toggle switches
+document.querySelectorAll('.sw').forEach(sw => {
+  sw.addEventListener('click', () => {
+    if (sw.style.opacity === '0.4') return;
+    sw.classList.toggle('on');
+  });
+});
+
+// Live ticking counter on "today" tab
+let total = 6 * 3600 + 47 * 60 + 22;
+const tEl = document.getElementById('today-total');
+setInterval(() => {
+  total++;
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  tEl.textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}, 1000);
+
+// Sync button animation
+document.getElementById('sync-btn').addEventListener('click', (e) => {
+  const btn = e.currentTarget;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<span style="display:inline-block;animation:spin 0.8s linear infinite;">↻</span> Syncing...';
+  setTimeout(() => { btn.innerHTML = '✓ Synced just now'; }, 900);
+  setTimeout(() => { btn.innerHTML = orig; }, 2400);
+});
+</script>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+</body>
+</html>
