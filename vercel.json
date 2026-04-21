@@ -1,7 +1,8 @@
 {
+  "cleanUrls": true,
+  "trailingSlash": false,
   "rewrites": [
-    { "source": "/agent", "destination": "/agent.html" },
-    { "source": "/", "destination": "/index.html" }
+    { "source": "/agent", "destination": "/agent.html" }
   ],
   "headers": [
     {
