@@ -1,206 +1,244 @@
-// ─── Auth store (localStorage-backed) ───
-// Seed users. Manager (admin) can add/reset passwords.
-const AUTH_KEY = 'nla_users_v3';
-const SESSION_KEY = 'nla_session_v1';
-const RESET_KEY = 'nla_resets_v1';
-
-const SEED_USERS = [
-  { id: 'admin', username: 'admin', password: 'admin123', name: 'Sanil', role: 'Studio Director', type: 'manager', initials: 'SN', tz: 'Asia/Dubai', tzLabel: 'UAE' },
-  { id: 'sanil', username: 'sanil', password: 'welcome123', name: 'Sanil', role: 'Studio Manager', type: 'manager', initials: 'SN', tz: 'Asia/Dubai', tzLabel: 'UAE' },
-  { id: 'adithya', username: 'adithya', password: 'welcome123', name: 'Adithya', role: 'Studio Manager', type: 'manager', initials: 'AD', tz: 'Asia/Kolkata', tzLabel: 'IST' },
-  { id: 'afsal', username: 'afsal', password: 'welcome123', name: 'Afsal Badrudeen', role: 'BIM Architect', type: 'employee', initials: 'AB', tz: 'Asia/Dubai', tzLabel: 'UAE' },
-  { id: 'sandra', username: 'sandra', password: 'welcome123', name: 'Sandra', role: 'BIM Architect', type: 'employee', initials: 'SA', tz: 'Asia/Dubai', tzLabel: 'UAE' },
-  { id: 'rivin', username: 'rivin', password: 'welcome123', name: 'Rivin Wilson', role: 'BIM Engineer', type: 'employee', initials: 'RW', tz: 'Asia/Kolkata', tzLabel: 'IST' },
-  { id: 'mehnas', username: 'mehnas', password: 'welcome123', name: 'Mehnas N Manzoor', role: 'BIM Engineer', type: 'employee', initials: 'MM', tz: 'Asia/Dubai', tzLabel: 'UAE' },
-  { id: 'elbin', username: 'elbin', password: 'welcome123', name: 'Elbin Paulose', role: 'BIM Engineer', type: 'employee', initials: 'EP', tz: 'Asia/Kolkata', tzLabel: 'IST' },
-];
-
-const Auth = {
-  getUsers() {
-    try {
-      const raw = localStorage.getItem(AUTH_KEY);
-      if (!raw) {
-        localStorage.setItem(AUTH_KEY, JSON.stringify(SEED_USERS));
-        return SEED_USERS;
-      }
-      return JSON.parse(raw);
-    } catch { return SEED_USERS; }
-  },
-  saveUsers(users) { localStorage.setItem(AUTH_KEY, JSON.stringify(users)); },
-  getSession() {
-    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
-  },
-  setSession(user) { localStorage.setItem(SESSION_KEY, JSON.stringify(user)); },
-  clearSession() { localStorage.removeItem(SESSION_KEY); },
-  login(username, password) {
-    const u = Auth.getUsers().find(x => x.username.toLowerCase() === username.toLowerCase());
-    if (!u) return { ok: false, error: 'No account found with that username.' };
-    if (u.password !== password) return { ok: false, error: 'Incorrect password.' };
-    Auth.setSession(u);
-    return { ok: true, user: u };
-  },
-  addUser(u) {
-    const users = Auth.getUsers();
-    if (users.find(x => x.username.toLowerCase() === u.username.toLowerCase())) {
-      return { ok: false, error: 'Username already exists.' };
-    }
-    const id = u.username.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const initials = u.name.split(/\s+/).map(s => s[0]).join('').slice(0,2).toUpperCase();
-    users.push({ ...u, id, initials });
-    Auth.saveUsers(users);
-    return { ok: true };
-  },
-  updatePassword(id, newPassword) {
-    const users = Auth.getUsers();
-    const u = users.find(x => x.id === id);
-    if (!u) return { ok: false };
-    u.password = newPassword;
-    Auth.saveUsers(users);
-    return { ok: true };
-  },
-  removeUser(id) {
-    const users = Auth.getUsers().filter(x => x.id !== id);
-    Auth.saveUsers(users);
-  },
-  updateUser(id, patch) {
-    const users = Auth.getUsers();
-    const u = users.find(x => x.id === id);
-    if (!u) return { ok: false };
-    Object.assign(u, patch);
-    // Keep tzLabel in sync with tz when tz changes
-    if (patch.tz && !patch.tzLabel) {
-      u.tzLabel = patch.tz === 'Asia/Dubai' ? 'UAE'
-                : patch.tz === 'Asia/Kolkata' ? 'IST'
-                : patch.tz === 'Europe/London' ? 'UK'
-                : patch.tz === 'America/New_York' ? 'EST'
-                : u.tzLabel || 'UAE';
-    }
-    Auth.saveUsers(users);
-    return { ok: true };
-  },
-  // Password reset requests (forgot password flow)
-  getResets() {
-    try { return JSON.parse(localStorage.getItem(RESET_KEY)) || []; } catch { return []; }
-  },
-  addReset(username) {
-    const resets = Auth.getResets();
-    resets.push({ id: `r${Date.now()}`, username, at: new Date().toISOString(), status: 'pending' });
-    localStorage.setItem(RESET_KEY, JSON.stringify(resets));
-  },
-  clearReset(id) {
-    const resets = Auth.getResets().filter(r => r.id !== id);
-    localStorage.setItem(RESET_KEY, JSON.stringify(resets));
-  },
-};
-
-window.Auth = Auth;
-
-// ─── Login screen ───
-function LoginScreen({ onLogin }) {
-  const [username, setUsername] = React.useState('');
+function ManagerUnlockModal({ open, onClose, onSuccess, user }) {
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState('');
-  const [success, setSuccess] = React.useState('');
-  const [forgot, setForgot] = React.useState(false);
+  React.useEffect(() => { if (open) { setPassword(''); setError(''); } }, [open]);
+  if (!open) return null;
 
   const submit = (e) => {
-    e.preventDefault();
-    const r = Auth.login(username.trim(), password);
-    if (!r.ok) { setError(r.error); setSuccess(''); return; }
-    onLogin(r.user);
-  };
-
-  const sendReset = (e) => {
-    e.preventDefault();
-    if (!username.trim()) { setError('Enter your username first.'); return; }
-    Auth.addReset(username.trim());
-    setSuccess('Password reset request sent to admin. You will be notified when it is reset.');
-    setError('');
-    setForgot(false);
+    e?.preventDefault?.();
+    const res = Auth.login(user.username, password);
+    if (res.ok) {
+      sessionStorage.setItem('nla_mgr_unlocked', '1');
+      onSuccess();
+    } else {
+      setError('Incorrect password. Admin access denied.');
+    }
   };
 
   return (
-    <div className="login-shell">
-      <div className="login-panel">
-        <div className="login-card">
-          <div className="brand">
-            <img src="assets/nature-logo.png" alt="Nature Landscape Architects" />
-          </div>
-          <h1>{forgot ? 'Reset your password' : 'Sign in'}</h1>
-          <p className="sub">
-            {forgot
-              ? 'Enter your username and we will ask admin to issue a new password.'
-              : 'Welcome back. Sign in to log your hours.'}
-          </p>
-
-          {error && <div className="login-error">{error}</div>}
-          {success && <div className="login-success">{success}</div>}
-
-          <form onSubmit={forgot ? sendReset : submit}>
-            <div className="field">
-              <label htmlFor="u">Username</label>
-              <input
-                id="u"
-                className="input"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoFocus
-                autoComplete="username"
-                placeholder="e.g. afsal"
-              />
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth: 400}}>
+        <div style={{padding: '24px 28px 8px', borderBottom: '1px solid var(--border)'}}>
+          <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 10,
+              background: 'rgba(16,35,71,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--brand-navy)'
+            }}>
+              <Icon name="eye" size={20} />
             </div>
-            {!forgot && (
-              <div className="field">
-                <div className="field-row">
-                  <label htmlFor="p">Password</label>
-                  <a className="hint-link" onClick={(e) => { e.preventDefault(); setForgot(true); setError(''); setSuccess(''); }}>
-                    Forgot password?
-                  </a>
-                </div>
-                <input
-                  id="p"
-                  type="password"
-                  className="input"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  placeholder="Enter password"
-                />
-              </div>
-            )}
-            <button className="login-btn" disabled={!username || (!forgot && !password)}>
-              {forgot ? 'Send reset request' : 'Sign in'}
-            </button>
-            {forgot && (
-              <button
-                type="button"
-                className="btn"
-                style={{width: '100%', marginTop: 8, justifyContent: 'center'}}
-                onClick={() => { setForgot(false); setError(''); setSuccess(''); }}
-              >Back to sign in</button>
-            )}
-          </form>
-
-
+            <div>
+              <h3 style={{margin: 0, fontSize: 16}}>Admin access required</h3>
+              <p style={{margin: '2px 0 0', fontSize: 12.5, color: 'var(--text-muted)'}}>
+                Manager view shows other employees' activity
+              </p>
+            </div>
+          </div>
         </div>
+        <form onSubmit={submit} style={{padding: '20px 28px 24px'}}>
+          <div className="field" style={{marginBottom: 12}}>
+            <label>Confirm your password</label>
+            <input
+              type="password"
+              className="input"
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+            />
+          </div>
+          {error && <div className="auth-error" style={{marginBottom: 12}}>{error}</div>}
+          <div style={{display: 'flex', gap: 8, justifyContent: 'flex-end'}}>
+            <button type="button" className="btn" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary">Unlock Manager view</button>
+          </div>
+        </form>
       </div>
+    </div>
+  );
+}
 
-      <div className="login-hero">
-        <div>
-          <div className="hero-kicker">Timesheet · BIM Studio</div>
-          <h2>Effortless Work Logging</h2>
-          <p>
-            Built to work quietly alongside you, capturing your design time without
-            distractions or manual input. A seamless, unobtrusive experience that keeps
-            your workflow uninterrupted while ensuring your efforts are consistently reflected.
-          </p>
+window.ManagerUnlockModal = ManagerUnlockModal;
+
+function TweaksPanel({ open, brandColor, setBrandColor, features, setFeatures, view, setView, canSwitchView }) {
+  if (!open) return null;
+  const swatches = [
+    { name: 'Navy (brand)', val: '#102347' },
+    { name: 'Forest', val: '#1f5130' },
+    { name: 'Charcoal', val: '#1f2937' },
+    { name: 'Slate blue', val: '#2f4a7a' },
+    { name: 'Terracotta', val: '#8f3a1a' },
+  ];
+  return (
+    <div className="tweaks-panel">
+      <div className="tweaks-header">
+        <span>Tweaks</span>
+        <Icon name="settings" size={14}/>
+      </div>
+      <div className="tweaks-body">
+        {canSwitchView && (
+          <div className="tweak-row">
+            <label>View</label>
+            <div className="view-switch" style={{width: '100%'}}>
+              <button className={view === 'employee' ? 'on' : ''} style={{flex: 1}} onClick={() => setView('employee')}>Employee</button>
+              <button className={view === 'manager' ? 'on' : ''} style={{flex: 1}} onClick={() => setView('manager')}>Manager</button>
+            </div>
+          </div>
+        )}
+        <div className="tweak-row">
+          <label>Brand color</label>
+          <div className="tweak-swatches">
+            {swatches.map(s => (
+              <div key={s.val} className={`tweak-swatch ${brandColor === s.val ? 'on' : ''}`}
+                   style={{background: s.val}} title={s.name} onClick={() => setBrandColor(s.val)} />
+            ))}
+          </div>
         </div>
-        <div className="login-hero-footer">
-          © 2026 Nature Landscape Architects · Internal tool
+        <div className="tweak-row">
+          <label>Optional features</label>
+          {[
+            { id: 'gps', label: 'GPS / site check-in' },
+            { id: 'photos', label: 'Jobsite photo uploads' },
+            { id: 'overtime', label: 'Highlight overtime' },
+          ].map(f => (
+            <div key={f.id} className="tweak-toggle">
+              <span>{f.label}</span>
+              <div className={`switch ${features[f.id] ? 'on' : ''}`}
+                   onClick={() => setFeatures({...features, [f.id]: !features[f.id]})} />
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
 }
 
-window.LoginScreen = LoginScreen;
+function greetingPrefix() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function App() {
+  const [user, setUser] = React.useState(() => Auth.getSession());
+  const [view, setView] = React.useState(() => localStorage.getItem('nla_view') || 'employee');
+  const [activeNav, setActiveNav] = React.useState('dashboard');
+  const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  const [brandColor, setBrandColor] = React.useState('#102347');
+  const [features, setFeatures] = React.useState({ gps: false, photos: false, overtime: true });
+  const [mgrUnlockOpen, setMgrUnlockOpen] = React.useState(false);
+  const [mgrUnlocked, setMgrUnlocked] = React.useState(() => !!sessionStorage.getItem('nla_mgr_unlocked'));
+
+  React.useEffect(() => { localStorage.setItem('nla_view', view); }, [view]);
+
+  // When user logs in — managers go straight to manager view, employees stay on employee view
+  React.useEffect(() => {
+    if (user) {
+      if (user.type === 'manager') {
+        setMgrUnlocked(true);
+        sessionStorage.setItem('nla_mgr_unlocked', '1');
+        setView('manager');
+      } else {
+        setView('employee');
+        setMgrUnlocked(false);
+        sessionStorage.removeItem('nla_mgr_unlocked');
+      }
+    }
+  }, [user?.id]);
+
+  React.useEffect(() => {
+    setActiveNav(view === 'employee' ? 'dashboard' : 'overview');
+  }, [view]);
+
+  React.useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--brand-navy', brandColor);
+    root.style.setProperty('--accent', brandColor);
+  }, [brandColor]);
+
+  React.useEffect(() => {
+    const handler = (ev) => {
+      if (ev.data?.type === '__activate_edit_mode') setTweaksOpen(true);
+      if (ev.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({type: '__edit_mode_available'}, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const persistEdit = (edits) => window.parent.postMessage({type: '__edit_mode_set_keys', edits}, '*');
+
+  if (!user) {
+    return <LoginScreen onLogin={(u) => setUser(u)} />;
+  }
+
+  const canSwitchView = user.type === 'manager';
+  // non-manager users can only see employee view
+  const effectiveView = canSwitchView && (view === 'manager' ? mgrUnlocked : true) ? view : 'employee';
+
+  // Managers can switch views freely — no password re-entry needed
+  const requestSetView = (v) => {
+    setView(v);
+    persistEdit({ view: v });
+  };
+
+  const title = `${greetingPrefix()}, ${user.name.split(' ')[0]}`;
+  const subtitle = effectiveView === 'employee'
+    ? "Monday, April 20 · Here's your day at a glance."
+    : "Monday, April 20 · Here's where the studio stands today.";
+
+  const logout = () => { Auth.clearSession(); setUser(null); };
+
+  return (
+    <div className="app" data-screen-label={`NLA Timesheet · ${effectiveView}`}>
+      <Sidebar view={effectiveView} activeNav={activeNav} setActiveNav={setActiveNav} user={user} />
+      <div className="main">
+        <Topbar
+          view={effectiveView}
+          setView={canSwitchView ? requestSetView : null}
+          title={title}
+          subtitle={subtitle}
+          canSwitchView={canSwitchView}
+          user={user}
+          actions={
+            <>
+              <button className="btn"><Icon name="search" size={14}/> Search</button>
+              <button className="btn"><Icon name="download" size={14}/> Export</button>
+              <UserMenu user={user} onLogout={logout} />
+            </>
+          }
+        />
+        {effectiveView === 'employee'
+          ? <EmployeeView featuresEnabled={features} user={user}/>
+    : <ManagerView activeNav={activeNav} />}
+      </div>
+
+      <TweaksPanel
+        open={tweaksOpen}
+        brandColor={brandColor}
+        setBrandColor={(c) => { setBrandColor(c); persistEdit({ brandColor: c }); }}
+        features={features}
+        setFeatures={(f) => { setFeatures(f); persistEdit({ features: f }); }}
+        view={effectiveView}
+        setView={requestSetView}
+        canSwitchView={canSwitchView}
+      />
+
+      <ManagerUnlockModal
+        open={mgrUnlockOpen}
+        user={user}
+        onClose={() => setMgrUnlockOpen(false)}
+        onSuccess={() => {
+          setMgrUnlocked(true);
+          setMgrUnlockOpen(false);
+          setView('manager');
+          persistEdit({ view: 'manager' });
+        }}
+      />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
