@@ -571,6 +571,9 @@ button { font-family: inherit; }
   background: var(--surface);
 }
 .week-cell.weekend { background: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(0,0,0,0.015) 6px, rgba(0,0,0,0.015) 12px); }
+.today-col { background: rgba(16,35,71,0.04) !important; }
+th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; color: var(--accent) !important; }
+.week-cell input:disabled { opacity: 0.6; cursor: not-allowed; background: transparent; }
 .week-cell.has-value input { font-weight: 500; }
 .week-cell.empty input { color: var(--text-faint); }
 
