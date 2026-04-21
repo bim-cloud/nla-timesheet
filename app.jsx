@@ -133,12 +133,18 @@ function App() {
 
   React.useEffect(() => { localStorage.setItem('nla_view', view); }, [view]);
 
-  // When user logs in, always start on employee view — manager requires password
+  // When user logs in — managers go straight to manager view, employees stay on employee view
   React.useEffect(() => {
     if (user) {
-      setView('employee');
-      setMgrUnlocked(false);
-      sessionStorage.removeItem('nla_mgr_unlocked');
+      if (user.type === 'manager') {
+        setMgrUnlocked(true);
+        sessionStorage.setItem('nla_mgr_unlocked', '1');
+        setView('manager');
+      } else {
+        setView('employee');
+        setMgrUnlocked(false);
+        sessionStorage.removeItem('nla_mgr_unlocked');
+      }
     }
   }, [user?.id]);
 
@@ -172,17 +178,8 @@ function App() {
   // non-manager users can only see employee view
   const effectiveView = canSwitchView && (view === 'manager' ? mgrUnlocked : true) ? view : 'employee';
 
-  // Gated setView: switching TO manager requires password re-entry
+  // Managers can switch views freely — no password re-entry needed
   const requestSetView = (v) => {
-    if (v === 'manager' && canSwitchView && !mgrUnlocked) {
-      setMgrUnlockOpen(true);
-      return;
-    }
-    if (v === 'employee') {
-      // leaving manager — relock for next time
-      setMgrUnlocked(false);
-      sessionStorage.removeItem('nla_mgr_unlocked');
-    }
     setView(v);
     persistEdit({ view: v });
   };
