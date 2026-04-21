@@ -205,17 +205,109 @@ function TodayEntries({ entries, setEntries, userId }) {
   );
 }
 
-function WeeklyGrid() {
-  const days = ['Mon 14', 'Tue 15', 'Wed 16', 'Thu 17', 'Fri 18'];
-  const [grid, setGrid] = useStateEmp(window.DATA.WEEK_DATA);
-
-  const projById = (id) => window.DATA.PROJECTS.find(p => p.id === id);
-  const updateCell = (ri, ci, v) => {
-    const copy = grid.map(r => ({...r, hours: [...r.hours]}));
-    copy[ri].hours[ci] = parseFloat(v) || 0;
-    setGrid(copy);
+function WeeklyGrid({ user }) {
+  // ── Week date helpers ──────────────────────────────────────
+  const getWeekDates = (offset = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1) + offset * 7);
+    return Array.from({ length: 5 }, (_, i) => {
+      const day = new Date(d);
+      day.setDate(d.getDate() + i);
+      return day.toISOString().split('T')[0];
+    });
   };
 
+  const fmtDayLabel = (iso) => {
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  };
+
+  const fmtWeekTitle = (dates) => {
+    const s = new Date(dates[0] + 'T00:00:00');
+    const e = new Date(dates[4] + 'T00:00:00');
+    return `Week of ${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })} – ${e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+  };
+
+  // ── State ──────────────────────────────────────────────────
+  const [weekOffset, setWeekOffset] = useStateEmp(0);
+  const [grid, setGrid] = useStateEmp([]); // [{project, projectName, client, hours:[0,0,0,0,0]}]
+  const [loading, setLoading] = useStateEmp(true);
+  const [submitted, setSubmitted] = useStateEmp(false);
+  const [submitting, setSubmitting] = useStateEmp(false);
+  const [saving, setSaving] = useStateEmp(false);
+
+  const dates = getWeekDates(weekOffset);
+  const today = new Date().toISOString().split('T')[0];
+  const isCurrentWeek = weekOffset === 0;
+
+  // ── Load week entries from Supabase ────────────────────────
+  useEffectEmp(() => {
+    if (!user?.id) return;
+    setLoading(true);
+    setGrid([]);
+
+    window.SupaEntries.forWeekGrid(user.id, dates[0]).then(entries => {
+      // Build project set from entries + DATA.PROJECTS
+      const projMap = {};
+      window.DATA.PROJECTS.forEach(p => {
+        projMap[p.id] = { project: p.id, projectName: p.name, client: p.client || '', hours: [0,0,0,0,0] };
+      });
+
+      // Also include projects that appear in entries but not in DATA.PROJECTS
+      entries.forEach(e => {
+        if (!projMap[e.project_id]) {
+          projMap[e.project_id] = { project: e.project_id, projectName: e.project_name || e.project_id, client: '', hours: [0,0,0,0,0] };
+        }
+      });
+
+      // Fill in hours from entries
+      entries.forEach(e => {
+        const dayIdx = dates.indexOf(e.date);
+        if (dayIdx >= 0 && projMap[e.project_id]) {
+          projMap[e.project_id].hours[dayIdx] += parseFloat(e.hours);
+        }
+      });
+
+      // Check if week is submitted
+      const hasSubmitted = entries.some(e => e.status === 'submitted');
+      const hasEntries = entries.length > 0;
+      setSubmitted(hasSubmitted && hasEntries);
+
+      // Only show projects with hours OR all DATA.PROJECTS for current week
+      const rows = Object.values(projMap);
+      setGrid(rows);
+      setLoading(false);
+    }).catch(() => {
+      setGrid(window.DATA.PROJECTS.map(p => ({ project: p.id, projectName: p.name, client: p.client || '', hours: [0,0,0,0,0] })));
+      setLoading(false);
+    });
+  }, [user?.id, weekOffset]);
+
+  // ── Cell update ────────────────────────────────────────────
+  const updateCell = async (ri, ci, v) => {
+    const val = parseFloat(v) || 0;
+    const copy = grid.map(r => ({ ...r, hours: [...r.hours] }));
+    copy[ri].hours[ci] = val;
+    setGrid(copy);
+
+    // Save to Supabase
+    setSaving(true);
+    await window.SupaEntries.upsertGridCell(
+      user.id, copy[ri].project, copy[ri].projectName, dates[ci], val
+    );
+    setSaving(false);
+  };
+
+  // ── Submit week ────────────────────────────────────────────
+  const submitWeek = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    const ok = await window.SupaEntries.submitWeek(user.id, dates[0]);
+    if (ok) setSubmitted(true);
+    setSubmitting(false);
+  };
+
+  // ── Totals ─────────────────────────────────────────────────
   const rowTotal = (r) => r.hours.reduce((s, x) => s + x, 0);
   const colTotal = (ci) => grid.reduce((s, r) => s + r.hours[ci], 0);
   const grand = grid.reduce((s, r) => s + rowTotal(r), 0);
@@ -224,63 +316,89 @@ function WeeklyGrid() {
     <div className="card">
       <div className="card-header">
         <div>
-          <h3 className="card-title">Week of April 14 – April 18</h3>
-          <div className="card-sub">Weekly timesheet · Submit to manager when complete</div>
+          <h3 className="card-title">{fmtWeekTitle(dates)}</h3>
+          <div className="card-sub">
+            Weekly timesheet · {saving ? 'Saving…' : 'Auto-saved to Supabase'}
+          </div>
         </div>
         <div style={{display: 'flex', gap: 6, alignItems: 'center'}}>
-          <span className="badge info">Draft</span>
-          <button className="btn btn-sm"><Icon name="chevronL" size={14}/></button>
-          <button className="btn btn-sm">This week</button>
-          <button className="btn btn-sm"><Icon name="chevronR" size={14}/></button>
-          <button className="btn btn-sm btn-primary"><Icon name="send" size={14}/> Submit</button>
+          <span className={`badge ${submitted ? 'success' : 'info'}`}>
+            {submitted ? 'Submitted' : 'Draft'}
+          </span>
+          <button className="btn btn-sm" onClick={() => setWeekOffset(weekOffset - 1)}>
+            <Icon name="chevronL" size={14}/>
+          </button>
+          <button className="btn btn-sm" onClick={() => setWeekOffset(0)}>
+            {isCurrentWeek ? 'This week' : 'Go to today'}
+          </button>
+          <button className="btn btn-sm" onClick={() => setWeekOffset(weekOffset + 1)} disabled={isCurrentWeek}>
+            <Icon name="chevronR" size={14}/>
+          </button>
+          {!submitted && (
+            <button className="btn btn-sm btn-primary" onClick={submitWeek} disabled={submitting || grand === 0}>
+              <Icon name="send" size={14}/> {submitting ? 'Submitting…' : 'Submit'}
+            </button>
+          )}
         </div>
       </div>
 
-      <div style={{overflowX: 'auto'}}>
-        <table className="week-grid">
-          <thead>
-            <tr>
-              <th style={{width: '40%'}}>Project</th>
-              {days.map(d => <th key={d} className="day-col">{d}</th>)}
-              <th className="total-col">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {grid.map((row, ri) => {
-              const p = projById(row.project);
-              return (
+      {loading ? (
+        <div style={{padding: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>
+          Loading timesheet…
+        </div>
+      ) : (
+        <div style={{overflowX: 'auto'}}>
+          <table className="week-grid">
+            <thead>
+              <tr>
+                <th style={{width: '35%'}}>Project</th>
+                {dates.map(d => (
+                  <th key={d} className={`day-col ${d === today ? 'today-col' : ''}`}>
+                    {fmtDayLabel(d)}
+                  </th>
+                ))}
+                <th className="total-col">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grid.map((row, ri) => (
                 <tr key={row.project}>
                   <td>
                     <div className="week-project">
-                      {p.name}
-                      <div className="proj-sub">{p.code} · {p.client}</div>
+                      {row.projectName}
+                      {row.client && <div className="proj-sub">{row.project.toUpperCase()} · {row.client}</div>}
                     </div>
                   </td>
                   {row.hours.map((h, ci) => (
-                    <td key={ci} className={`week-cell ${h > 0 ? 'has-value' : 'empty'}`}>
+                    <td key={ci} className={`week-cell ${h > 0 ? 'has-value' : 'empty'} ${dates[ci] === today ? 'today-col' : ''}`}>
                       <input
                         type="number"
                         step="0.25"
+                        min="0"
+                        max="24"
                         value={h === 0 ? '' : h}
                         placeholder="—"
+                        disabled={submitted}
                         onChange={(e) => updateCell(ri, ci, e.target.value)}
                       />
                     </td>
                   ))}
-                  <td className="week-total">{rowTotal(row).toFixed(2)}</td>
+                  <td className="week-total">{rowTotal(row) > 0 ? rowTotal(row).toFixed(2) : '—'}</td>
                 </tr>
-              );
-            })}
-            <tr className="week-total-row">
-              <td><div className="week-project">Daily total</div></td>
-              {days.map((_, ci) => (
-                <td key={ci} className="week-total">{colTotal(ci).toFixed(2)}</td>
               ))}
-              <td className="week-total">{grand.toFixed(2)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+              <tr className="week-total-row">
+                <td><div className="week-project">Daily total</div></td>
+                {dates.map((_, ci) => (
+                  <td key={ci} className={`week-total ${dates[ci] === today ? 'today-col' : ''}`}>
+                    {colTotal(ci) > 0 ? colTotal(ci).toFixed(2) : '—'}
+                  </td>
+                ))}
+                <td className="week-total" style={{fontWeight: 700}}>{grand > 0 ? grand.toFixed(2) : '—'}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -461,7 +579,7 @@ function EmployeeView({ featuresEnabled, user }) {
         <h2>Weekly timesheet</h2>
         <span className="hint">Grid view · Edit hours inline</span>
       </div>
-      <WeeklyGrid />
+      <WeeklyGrid user={user} />
 
       <div className="section-title">
         <h2>Time off</h2>
