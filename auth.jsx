@@ -37,6 +37,8 @@ const Auth = {
     if (!u) return { ok: false, error: 'No account found with that username.' };
     if (u.password !== password) return { ok: false, error: 'Incorrect password.' };
     Auth.setSession(u);
+    // Sync profile to Supabase in background
+    if (window.SupaProfiles) window.SupaProfiles.upsert(u);
     return { ok: true, user: u };
   },
   addUser(u) {
