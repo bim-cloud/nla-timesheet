@@ -353,11 +353,8 @@ function DesktopAgentBanner() {
           </svg>
         </div>
         <div>
-          <div style={{fontSize: 14, fontWeight: 600, marginBottom: 2}}>
+          <div style={{fontSize: 14, fontWeight: 600}}>
             Install the Windows desktop agent
-          </div>
-          <div style={{fontSize: 12.5, color: '#c9d3e6'}}>
-            Auto-track time in Revit, AutoCAD, Navisworks, Civil 3D, Teams &amp; more — synced to this dashboard in real time.
           </div>
         </div>
       </div>
