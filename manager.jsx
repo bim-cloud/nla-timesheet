@@ -132,7 +132,7 @@ function TeamOverviewTable() {
 
 function ManagerStats() {
   const [stats, setStats] = React.useState({
-    activeToday: '—', totalToday: '—', weekHrs: '—', util: '—', empCount: 0,
+    activeToday: '—', totalToday: '—', weekHrs: '—', util: '—', empCount: 0, pendingApprovals: '—',
   });
 
   React.useEffect(() => {
@@ -153,12 +153,25 @@ function ManagerStats() {
       const weekHrs = weekRows.reduce((s, e) => s + parseFloat(e.hours), 0);
       const weekTarget = employees.length * 40;
       const util = weekTarget > 0 ? Math.round((weekHrs / weekTarget) * 100) : 0;
-      setStats({
-        activeToday: String(activeUsers),
-        totalToday: todayHrs.toFixed(1),
-        weekHrs: weekHrs.toFixed(1),
-        util: util + '%',
-        empCount: employees.length,
+      window.SupaEntries.getPendingSubmissions().then(pending => {
+        const groups = new Set(pending.map(e => e.user_id + e.date?.slice(0,7)));
+        setStats({
+          activeToday: String(activeUsers),
+          totalToday: todayHrs.toFixed(1),
+          weekHrs: weekHrs.toFixed(1),
+          util: util + '%',
+          empCount: employees.length,
+          pendingApprovals: String(groups.size),
+        });
+      }).catch(() => {
+        setStats({
+          activeToday: String(activeUsers),
+          totalToday: todayHrs.toFixed(1),
+          weekHrs: weekHrs.toFixed(1),
+          util: util + '%',
+          empCount: employees.length,
+          pendingApprovals: '0',
+        });
       });
     }).catch(() => {});
   }, []);
@@ -167,7 +180,7 @@ function ManagerStats() {
     { label: 'Active today',    value: stats.activeToday, unit: `of ${stats.empCount}`, delta: 'Logged entries today',   deltaClass: '' },
     { label: 'Team hrs today',  value: stats.totalToday,  unit: 'hrs',                  delta: `${stats.empCount * 8}h target`, deltaClass: '' },
     { label: 'Hrs this week',   value: stats.weekHrs,     unit: 'hrs',                  delta: `${stats.util} utilization`,    deltaClass: 'up' },
-    { label: 'Pending approvals', value: '—',             unit: '',                     delta: 'Coming soon',           deltaClass: '' },
+    { label: 'Pending approvals', value: stats.pendingApprovals, unit: '', delta: 'Submitted timesheets', deltaClass: stats.pendingApprovals !== '0' ? 'up' : '' },
   ];
   return (
     <div className="stats-row">
@@ -183,39 +196,113 @@ function ManagerStats() {
 }
 
 function Approvals() {
-  const [items, setItems] = React.useState(window.DATA.APPROVALS);
-  const empById = (id) => window.DATA.EMPLOYEES.find(e => e.id === id);
-  const act = (id) => setItems(items.filter(i => i.id !== id));
+  const [submissions, setSubmissions] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [acting, setActing] = React.useState(null);
+
+  const load = () => {
+    window.SupaEntries.getPendingSubmissions().then(rows => {
+      // Group by user_id + week (monday date)
+      const grouped = {};
+      rows.forEach(e => {
+        const d = new Date(e.date + 'T00:00:00');
+        const day = d.getDay();
+        const monday = new Date(d);
+        monday.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+        const key = `${e.user_id}__${monday.toISOString().split('T')[0]}`;
+        if (!grouped[key]) {
+          grouped[key] = {
+            key,
+            userId: e.user_id,
+            monday: monday.toISOString().split('T')[0],
+            profile: e.profiles,
+            hours: 0,
+            entries: [],
+            submittedAt: e.created_at,
+          };
+        }
+        grouped[key].hours += parseFloat(e.hours);
+        grouped[key].entries.push(e.id);
+        if (e.created_at > grouped[key].submittedAt) grouped[key].submittedAt = e.created_at;
+      });
+      setSubmissions(Object.values(grouped));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  };
+
+  React.useEffect(() => { load(); }, []);
+
+  const fmtWeek = (monday) => {
+    const d = new Date(monday + 'T00:00:00');
+    const fri = new Date(d); fri.setDate(d.getDate() + 4);
+    return `Week of ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${fri.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+  };
+
+  const fmtDate = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+  const approve = async (sub) => {
+    setActing(sub.key + '_approve');
+    await window.SupaEntries.approveSubmission(sub.entries);
+    load();
+    setActing(null);
+  };
+
+  const reject = async (sub) => {
+    setActing(sub.key + '_reject');
+    await window.SupaEntries.rejectSubmission(sub.entries);
+    load();
+    setActing(null);
+  };
 
   return (
     <div className="card">
       <div className="card-header">
         <div>
           <h3 className="card-title">Pending approvals</h3>
-          <div className="card-sub">{items.length} awaiting review</div>
+          <div className="card-sub">
+            {loading ? 'Loading…' : `${submissions.length} awaiting review`}
+          </div>
         </div>
-        <button className="btn btn-sm">View all</button>
+        <button className="btn btn-sm" onClick={load}><Icon name="refresh" size={14}/></button>
       </div>
 
-      {items.length === 0 ? (
-        <div className="empty">✓ All caught up.</div>
-      ) : items.map(item => {
-        const e = empById(item.emp);
+      {loading ? (
+        <div className="empty" style={{padding: '20px', color: 'var(--text-muted)', fontSize: 13}}>Loading…</div>
+      ) : submissions.length === 0 ? (
+        <div className="empty" style={{padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>
+          ✓ All caught up — no pending timesheets.
+        </div>
+      ) : submissions.map(sub => {
+        const p = sub.profile;
+        const initials = p?.initials || (p?.name || '?').split(' ').map(s => s[0]).join('').slice(0,2).toUpperCase();
         return (
-          <div key={item.id} className="request">
-            <div className="avatar">{e.initials}</div>
+          <div key={sub.key} className="request">
+            <div className="avatar">{initials}</div>
             <div className="req-body">
               <p className="req-title">
-                {e.name} · <span style={{fontWeight: 400, color: 'var(--text-muted)'}}>
-                  {item.type === 'leave' ? 'Leave request' : 'Timesheet'}
-                </span>
+                {p?.name || sub.userId} · <span style={{fontWeight: 400, color: 'var(--text-muted)'}}>Timesheet</span>
               </p>
-              <p className="req-sub">{item.label}</p>
-              <p className="req-sub" style={{fontSize: 11.5, marginTop: 2}}>{item.sub}</p>
+              <p className="req-sub">{fmtWeek(sub.monday)} · {sub.hours.toFixed(1)} hrs total</p>
+              <p className="req-sub" style={{fontSize: 11.5, marginTop: 2, color: 'var(--text-faint)'}}>
+                Submitted {fmtDate(sub.submittedAt)}
+              </p>
             </div>
             <div className="req-actions">
-              <button className="btn btn-sm" onClick={() => act(item.id)}><Icon name="x" size={14}/></button>
-              <button className="btn btn-sm btn-primary" onClick={() => act(item.id)}><Icon name="check" size={14}/> Approve</button>
+              <button
+                className="btn btn-sm"
+                disabled={!!acting}
+                onClick={() => reject(sub)}
+                style={{color: 'var(--red, #c0392b)'}}
+              >
+                {acting === sub.key + '_reject' ? '…' : <><Icon name="x" size={14}/> Reject</>}
+              </button>
+              <button
+                className="btn btn-sm btn-primary"
+                disabled={!!acting}
+                onClick={() => approve(sub)}
+              >
+                {acting === sub.key + '_approve' ? '…' : <><Icon name="check" size={14}/> Approve</>}
+              </button>
             </div>
           </div>
         );
@@ -225,30 +312,59 @@ function Approvals() {
 }
 
 function ProjectHours() {
+  const [totals, setTotals] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
   const projById = (id) => window.DATA.PROJECTS.find(p => p.id === id);
+
+  React.useEffect(() => {
+    const getMonday = () => {
+      const d = new Date(); const day = d.getDay();
+      d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+      return d.toISOString().split('T')[0];
+    };
+    const today = new Date().toISOString().split('T')[0];
+    window.SupaEntries.teamSummary(getMonday(), today).then(rows => {
+      const byProject = {};
+      rows.forEach(e => {
+        if (!byProject[e.project_id]) byProject[e.project_id] = { hours: 0, users: new Set() };
+        byProject[e.project_id].hours += parseFloat(e.hours);
+        byProject[e.project_id].users.add(e.user_id);
+      });
+      const result = Object.entries(byProject)
+        .map(([id, d]) => ({ id, hours: d.hours, team: d.users.size }))
+        .sort((a, b) => b.hours - a.hours);
+      setTotals(result);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
   return (
     <div className="card">
       <div className="card-header">
         <div>
           <h3 className="card-title">Project hours · this week</h3>
-          <div className="card-sub">Actual vs. budgeted</div>
+          <div className="card-sub">Real data from Supabase</div>
         </div>
-        <button className="btn btn-sm"><Icon name="download" size={14}/> CSV</button>
       </div>
-      {window.DATA.PROJECT_TOTALS.map(pt => {
+      {loading ? (
+        <div style={{padding: '16px', color: 'var(--text-muted)', fontSize: 13}}>Loading…</div>
+      ) : totals.length === 0 ? (
+        <div style={{padding: '16px', color: 'var(--text-muted)', fontSize: 13}}>No hours logged this week yet.</div>
+      ) : totals.map(pt => {
         const p = projById(pt.id);
-        const pct = Math.min(100, (pt.hours / pt.budget) * 100);
-        const over = pt.hours > pt.budget;
+        const budget = p ? 80 : 40;
+        const pct = Math.min(100, (pt.hours / budget) * 100);
+        const over = pt.hours > budget;
         return (
           <div key={pt.id} className="project-item">
             <div>
-              <div className="pname">{p.name}</div>
-              <div className="pmeta">{p.code} · {p.client} · {pt.team} {pt.team === 1 ? 'person' : 'people'}</div>
+              <div className="pname">{p?.name || pt.id}</div>
+              <div className="pmeta">{p?.code || pt.id} · {p?.client || ''} · {pt.team} {pt.team === 1 ? 'person' : 'people'}</div>
             </div>
             <div className={`util-bar ${over ? 'over' : ''}`} style={{width: '100%'}}>
               <span style={{width: `${pct}%`}}/>
             </div>
-            <div className="phours">{pt.hours.toFixed(1)} / {pt.budget}</div>
+            <div className="phours">{pt.hours.toFixed(1)}h</div>
           </div>
         );
       })}
@@ -257,30 +373,65 @@ function ProjectHours() {
 }
 
 function WeekTotalsBars() {
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  const values = window.DATA.WEEK_DAILY_TOTALS;
-  const max = 50;
+  const [values, setValues] = React.useState([0,0,0,0,0]);
+  const [dates, setDates] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri'];
+
+  React.useEffect(() => {
+    const d = new Date();
+    const day = d.getDay();
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+    const weekDates = Array.from({length: 5}, (_, i) => {
+      const x = new Date(monday); x.setDate(monday.getDate() + i);
+      return x.toISOString().split('T')[0];
+    });
+    setDates(weekDates);
+    const today = new Date().toISOString().split('T')[0];
+    window.SupaEntries.teamSummary(weekDates[0], today).then(rows => {
+      const byDay = [0,0,0,0,0];
+      rows.forEach(e => {
+        const idx = weekDates.indexOf(e.date);
+        if (idx >= 0) byDay[idx] += parseFloat(e.hours);
+      });
+      setValues(byDay);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const max = Math.max(...values, 10);
+  const today = new Date().toISOString().split('T')[0];
+
   return (
     <div className="card">
       <div className="card-header">
         <div>
           <h3 className="card-title">Team hours this week</h3>
-          <div className="card-sub">Daily totals across all projects</div>
+          <div className="card-sub">Daily totals · all employees</div>
         </div>
       </div>
       <div className="day-bars" style={{height: 120}}>
-        {days.map((d, i) => (
-          <div key={d} className="day-bar">
-            <div className="bar" style={{height: '100%', position: 'relative'}}>
-              <div className="fill" style={{height: `${(values[i]/max)*100}%`}}/>
-              <div style={{
-                position: 'absolute', top: -18, left: 0, right: 0, textAlign: 'center',
-                fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)',
-              }}>{values[i]}h</div>
+        {DAY_LABELS.map((d, i) => {
+          const isToday = dates[i] === today;
+          return (
+            <div key={d} className="day-bar">
+              <div className="bar" style={{height: '100%', position: 'relative'}}>
+                <div className="fill" style={{
+                  height: loading ? '0%' : `${(values[i]/max)*100}%`,
+                  background: isToday ? 'var(--accent)' : undefined,
+                  transition: 'height 0.4s ease',
+                }}/>
+                <div style={{
+                  position: 'absolute', top: -18, left: 0, right: 0, textAlign: 'center',
+                  fontSize: 10.5, fontFamily: 'var(--font-mono)', color: isToday ? 'var(--accent)' : 'var(--text-muted)',
+                  fontWeight: isToday ? 600 : 400,
+                }}>{values[i] > 0 ? values[i].toFixed(1) + 'h' : '—'}</div>
+              </div>
+              <div className="label" style={{fontWeight: isToday ? 600 : 400}}>{d}</div>
             </div>
-            <div className="label">{d}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
