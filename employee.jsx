@@ -9,9 +9,11 @@ function ClockCard({ clockState, setClockState, activity, user }) {
   const tz = user?.tz || 'Asia/Dubai';
   const tzLabel = user?.tzLabel || 'UAE';
   const hourNow = parseInt(now.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', hour12: false }));
-  const isBreak = hourNow === 13;
-  const beforeWork = hourNow < 9;
-  const afterWork = hourNow >= 18;
+  const minNow = parseInt(now.toLocaleTimeString('en-GB', { timeZone: tz, minute: '2-digit' }));
+  const isBreak = hourNow === 13; // 1:00 PM – 2:00 PM
+  const beforeWork = hourNow < 8 || (hourNow === 8 && minNow < 30);
+  const afterWork = hourNow > 18 || (hourNow === 18 && minNow >= 30); // after 6:30 PM
+  const isOT = afterWork && clockState === 'working'; // overtime after 6:30 PM
 
   const fmt = (s) => {
     const h = Math.floor(s / 3600);
@@ -28,7 +30,7 @@ function ClockCard({ clockState, setClockState, activity, user }) {
         <div style={{display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap'}}>
           <div className="clock-label" style={{margin: 0}}>Tracking · Dubai Creek Harbor F09</div>
           <span className="activity-pill" style={{background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#c9d3e6'}}>
-            {now.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true })} {tzLabel} · Shift 9:00 AM–6:00 PM
+            {now.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true })} {tzLabel} · Shift 8:30 AM–6:30 PM
           </span>
           {running && (
             <span className={`activity-pill ${activity.idle ? 'idle' : ''}`}>
@@ -36,14 +38,15 @@ function ClockCard({ clockState, setClockState, activity, user }) {
               {activity.idle ? `Idle · ${idleSec}s` : 'Active'}
             </span>
           )}
-          {isBreak && <span className="activity-pill idle"><span className="pulse"/>Break time · 1:00 PM–2:00 PM</span>}
+          {isBreak && <span className="activity-pill idle"><span className="pulse"/>Lunch break · 1:00 PM–2:00 PM</span>}
+          {isOT && <span className="activity-pill" style={{background:'rgba(186,117,23,0.2)',color:'#e8a020',border:'1px solid rgba(186,117,23,0.3)'}}><span className="pulse" style={{background:'#e8a020'}}/>Overtime</span>}
         </div>
         <div className="clock-time">{fmt(activity.activeElapsed)}</div>
         <div className="clock-status">
           <span className={`clock-dot ${running && !activity.idle ? '' : 'off'}`} />
-          {running && !activity.idle && 'Clocked in at 8:42 AM · Timer follows your activity'}
+          {running && !activity.idle && 'Clocked in · Timer follows your activity'}
           {showIdleLabel && 'Timer paused — move mouse or press a key to resume'}
-          {clockState === 'break' && 'On break — started 1:12 PM'}
+          {clockState === 'break' && 'On break · Lunch 1:00 PM–2:00 PM'}
           {clockState === 'stopped' && 'Not clocked in'}
         </div>
         {running && (
@@ -83,7 +86,7 @@ function ClockCard({ clockState, setClockState, activity, user }) {
 
 function StatCards({ featuresEnabled }) {
   const stats = [
-    { label: 'Today', value: '6.75', unit: 'hrs', delta: 'Target 8h · 9am–6pm (1h break)', deltaClass: '' },
+    { label: 'Today', value: '0.00', unit: 'hrs', delta: 'Target 9h · 8:30am–6:30pm (1h break)', deltaClass: '' },
     { label: 'This week', value: '32.5', unit: '/ 40 hrs', delta: '7.5 hrs remaining', deltaClass: '' },
     { label: 'Overtime this month', value: '4.25', unit: 'hrs', delta: 'Within policy (≤8)', deltaClass: 'up' },
     { label: 'Leave balance', value: '18', unit: 'days', delta: '2 pending request', deltaClass: '' },
@@ -141,7 +144,7 @@ function TodayEntries({ entries, setEntries, userId }) {
       <div className="card-header">
         <div>
           <h3 className="card-title">Today · Monday, April 20</h3>
-          <div className="card-sub">Working hours 9:00 AM–6:00 PM · Break 1:00 PM–2:00 PM · Log as you go</div>
+          <div className="card-sub">Working hours 8:30 AM–6:30 PM · Lunch 1:00 PM–2:00 PM · OT after 6:30 PM</div>
         </div>
         <div style={{display: 'flex', gap: 6}}>
           <button className="btn btn-sm"><Icon name="filter" size={14}/> Filter</button>
@@ -350,7 +353,7 @@ function WeeklyGrid({ user }) {
           </button>
           <window.ExportButtons user={user} weekOffset={weekOffset} size="sm" />
           {!submitted && (
-            <button className="btn btn-sm btn-primary" onClick={submitWeek} disabled={submitting || grand === 0}>
+            <button className="btn btn-sm btn-primary" onClick={submitWeek} disabled={submitting || grand === 0} title="Submit when timesheet is complete">
               <Icon name="send" size={14}/> {submitting ? 'Submitting…' : 'Submit'}
             </button>
           )}
@@ -566,13 +569,7 @@ function EmployeeView({ featuresEnabled, user }) {
   }, [user?.id]);
   const activity = window.useActivityTracker({ enabled: clockState === 'working', idleThresholdSec: 120 });
   // seed in prior hours for realism
-  const baseActive = 6.75 * 3600;
-  const baseTotal = 7.1 * 3600;
-  const displayActivity = {
-    ...activity,
-    activeElapsed: baseActive + activity.activeElapsed,
-    totalElapsed: baseTotal + activity.totalElapsed,
-  };
+  const displayActivity = activity;
 
   return (
     <div className="content">
