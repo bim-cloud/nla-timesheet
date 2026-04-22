@@ -51,6 +51,7 @@ window.useActivityTracker = useActivityTracker;
 // ─── User menu (topbar dropdown) ───
 function UserMenu({ user, onLogout, onSwitchView }) {
   const [open, setOpen] = React.useState(false);
+  const [changePwOpen, setChangePwOpen] = React.useState(false);
   const ref = React.useRef();
   React.useEffect(() => {
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -58,30 +59,34 @@ function UserMenu({ user, onLogout, onSwitchView }) {
     return () => document.removeEventListener('mousedown', h);
   }, []);
   return (
-    <div className="user-menu" ref={ref}>
-      <button className="user-menu-trigger" onClick={() => setOpen(!open)}>
-        <div className="avatar">{user.initials}</div>
-        <div className="name">{user.name.split(' ')[0]}</div>
-        <Icon name="chevronR" size={14}/>
-      </button>
-      {open && (
-        <div className="user-menu-pop">
-          <div className="who-block">
-            <div className="n">{user.name}</div>
-            <div className="e">{user.role} · @{user.username}</div>
+    <>
+      <div className="user-menu" ref={ref}>
+        <button className="user-menu-trigger" onClick={() => setOpen(!open)}>
+          <div className="avatar">{user.initials}</div>
+          <div className="name">{user.name.split(' ')[0]}</div>
+          <Icon name="chevronR" size={14}/>
+        </button>
+        {open && (
+          <div className="user-menu-pop">
+            <div className="who-block">
+              <div className="n">{user.name}</div>
+              <div className="e">{user.role} · @{user.username}</div>
+            </div>
+            <button onClick={() => { setOpen(false); setChangePwOpen(true); }}>
+              <Icon name="eye" size={14}/> Change password
+            </button>
+            <button className="danger" onClick={() => { setOpen(false); onLogout(); }}>
+              <Icon name="x" size={14}/> Sign out
+            </button>
           </div>
-          <button onClick={() => { setOpen(false); }}>
-            <Icon name="settings" size={14}/> Account settings
-          </button>
-          <button onClick={() => { setOpen(false); }}>
-            <Icon name="bell" size={14}/> Notifications
-          </button>
-          <button className="danger" onClick={() => { setOpen(false); onLogout(); }}>
-            <Icon name="x" size={14}/> Sign out
-          </button>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+      <window.ChangePasswordModal
+        user={user}
+        open={changePwOpen}
+        onClose={() => setChangePwOpen(false)}
+      />
+    </>
   );
 }
 
