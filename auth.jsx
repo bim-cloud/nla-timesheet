@@ -58,6 +58,8 @@ const Auth = {
     if (!u) return { ok: false };
     u.password = newPassword;
     Auth.saveUsers(users);
+    // Sync to Supabase in background
+    if (window.SupaPasswords) window.SupaPasswords.update(id, newPassword);
     return { ok: true };
   },
   removeUser(id) {
@@ -206,3 +208,139 @@ function LoginScreen({ onLogin }) {
 }
 
 window.LoginScreen = LoginScreen;
+
+// ─── Change Password Modal ─────────────────────────────────────
+function ChangePasswordModal({ user, open, onClose }) {
+  const [current, setCurrent] = React.useState('');
+  const [newPw, setNewPw] = React.useState('');
+  const [confirm, setConfirm] = React.useState('');
+  const [error, setError] = React.useState('');
+  const [success, setSuccess] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [showCurrent, setShowCurrent] = React.useState(false);
+  const [showNew, setShowNew] = React.useState(false);
+
+  React.useEffect(() => {
+    if (open) { setCurrent(''); setNewPw(''); setConfirm(''); setError(''); setSuccess(''); }
+  }, [open]);
+
+  if (!open) return null;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError(''); setSuccess('');
+    if (!current) { setError('Enter your current password.'); return; }
+    if (newPw.length < 6) { setError('New password must be at least 6 characters.'); return; }
+    if (newPw !== confirm) { setError('New passwords do not match.'); return; }
+    if (current === newPw) { setError('New password must be different from current.'); return; }
+
+    setLoading(true);
+    // Verify current password
+    const u = Auth.getUsers().find(x => x.id === user.id);
+    if (!u || u.password !== current) {
+      setError('Current password is incorrect.');
+      setLoading(false);
+      return;
+    }
+    // Update locally + Supabase
+    Auth.updatePassword(user.id, newPw);
+    // Update session
+    const updated = { ...u, password: newPw };
+    Auth.setSession(updated);
+    setSuccess('Password changed successfully!');
+    setLoading(false);
+    setCurrent(''); setNewPw(''); setConfirm('');
+    setTimeout(onClose, 1500);
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth: 420}}>
+        <div style={{padding: '22px 28px 12px', borderBottom: '1px solid var(--border)'}}>
+          <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
+            <div style={{
+              width: 38, height: 38, borderRadius: 9,
+              background: 'rgba(16,35,71,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--brand-navy)',
+            }}>
+              <Icon name="eye" size={18}/>
+            </div>
+            <div>
+              <h3 style={{margin: 0, fontSize: 15}}>Change password</h3>
+              <p style={{margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)'}}>
+                {user.name} · {user.username}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={submit} style={{padding: '20px 28px 24px'}}>
+          {error && <div className="auth-error" style={{marginBottom: 12}}>{error}</div>}
+          {success && <div className="login-success" style={{marginBottom: 12}}>{success}</div>}
+
+          <div className="field" style={{marginBottom: 12}}>
+            <label>Current password</label>
+            <div style={{position: 'relative'}}>
+              <input
+                type={showCurrent ? 'text' : 'password'}
+                className="input"
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+                placeholder="Your current password"
+                autoFocus
+              />
+              <button type="button" onClick={() => setShowCurrent(!showCurrent)}
+                style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',
+                  background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',fontSize:11}}>
+                {showCurrent ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+
+          <div className="field" style={{marginBottom: 12}}>
+            <label>New password</label>
+            <div style={{position: 'relative'}}>
+              <input
+                type={showNew ? 'text' : 'password'}
+                className="input"
+                value={newPw}
+                onChange={(e) => setNewPw(e.target.value)}
+                placeholder="Min. 6 characters"
+              />
+              <button type="button" onClick={() => setShowNew(!showNew)}
+                style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',
+                  background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',fontSize:11}}>
+                {showNew ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+
+          <div className="field" style={{marginBottom: 16}}>
+            <label>Confirm new password</label>
+            <input
+              type="password"
+              className="input"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="Repeat new password"
+            />
+          </div>
+
+          <div style={{display: 'flex', gap: 8, justifyContent: 'flex-end'}}>
+            <button type="button" className="btn" onClick={onClose}>Cancel</button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={loading || !current || !newPw || !confirm}
+            >
+              {loading ? 'Saving…' : 'Change password'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+window.ChangePasswordModal = ChangePasswordModal;
