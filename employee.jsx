@@ -540,7 +540,7 @@ function DesktopAgentBanner() {
   );
 }
 
-function EmployeeView({ featuresEnabled, user, activeNav, setActiveNav }) {
+function EmployeeView({ featuresEnabled, user, activeNav }) {
   const [clockState, setClockState] = useStateEmp('working');
   const [entries, setEntries] = useStateEmp([]);
 
@@ -556,14 +556,25 @@ function EmployeeView({ featuresEnabled, user, activeNav, setActiveNav }) {
   }, [user?.id]);
 
   const activity = window.useActivityTracker({ enabled: clockState === 'working', idleThresholdSec: 120 });
+
+  const todayLabel = new Date().toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+
+  const getWeekLabel = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const mon = new Date(d); mon.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+    const fri = new Date(mon); fri.setDate(mon.getDate() + 4);
+    return mon.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) +
+      ' – ' + fri.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
   const nav = activeNav || 'dashboard';
-  const todayLabel = new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
-  const projects = window.DATA.PROJECTS || [];
 
   return (
     <div className="content">
 
-      {/* ── Dashboard ─────────────────────────────────────────── */}
       {nav === 'dashboard' && (
         <>
           <DesktopAgentBanner />
@@ -580,16 +591,15 @@ function EmployeeView({ featuresEnabled, user, activeNav, setActiveNav }) {
         </>
       )}
 
-      {/* ── My Timesheet ──────────────────────────────────────── */}
       {nav === 'timesheet' && (
         <>
           <div className="section-title" style={{marginTop:0}}>
             <h2>My Timesheet</h2>
-            <span className="hint">Weekly grid · log hours by project · submit for approval</span>
+            <span className="hint">{getWeekLabel()} · Submit for approval when complete</span>
           </div>
           <WeeklyGrid user={user} />
           <div className="section-title">
-            <h2>Today's entries</h2>
+            <h2>Today&apos;s entries</h2>
             <span className="hint">{todayLabel}</span>
           </div>
           <div className="col-8-4">
@@ -599,56 +609,45 @@ function EmployeeView({ featuresEnabled, user, activeNav, setActiveNav }) {
         </>
       )}
 
-      {/* ── Projects ──────────────────────────────────────────── */}
       {nav === 'projects' && (
         <>
           <div className="section-title" style={{marginTop:0}}>
             <h2>Projects</h2>
-            <span className="hint">Active projects · log time against any project</span>
+            <span className="hint">Active projects assigned to your team</span>
           </div>
           <div className="card">
             <div className="card-header">
-              <div>
-                <h3 className="card-title">Active projects</h3>
-                <div className="card-sub">{projects.length} projects</div>
-              </div>
+              <h3 className="card-title">Active projects</h3>
+              <div className="card-sub">{(window.DATA.PROJECTS||[]).length} projects</div>
             </div>
-            {projects.length === 0 ? (
-              <div style={{padding:'24px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>No projects configured.</div>
-            ) : (
-              <table className="team-table">
-                <thead><tr><th>Project</th><th>Code</th><th>Client</th><th></th></tr></thead>
-                <tbody>
-                  {projects.map(p => (
-                    <tr key={p.id}>
-                      <td>
-                        <div style={{display:'flex',alignItems:'center',gap:8}}>
-                          <div style={{width:10,height:10,borderRadius:'50%',background:p.color||'#102347',flexShrink:0}}/>
-                          <span style={{fontWeight:500}}>{p.name}</span>
-                        </div>
-                      </td>
-                      <td style={{color:'var(--text-muted)',fontFamily:'var(--font-mono)',fontSize:12}}>{p.code}</td>
-                      <td style={{color:'var(--text-muted)'}}>{p.client||'—'}</td>
-                      <td>
-                        <button className="btn btn-sm btn-primary" onClick={() => setActiveNav('timesheet')}>
-                          Log time
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+            <table className="team-table">
+              <thead>
+                <tr><th>Project</th><th>Code</th><th>Client</th></tr>
+              </thead>
+              <tbody>
+                {(window.DATA.PROJECTS||[]).map(p => (
+                  <tr key={p.id}>
+                    <td>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div style={{width:10,height:10,borderRadius:'50%',background:p.color||'#102347',flexShrink:0}}/>
+                        <span style={{fontWeight:500}}>{p.name}</span>
+                      </div>
+                    </td>
+                    <td style={{color:'var(--text-muted)',fontFamily:'var(--font-mono)',fontSize:12}}>{p.code}</td>
+                    <td style={{color:'var(--text-muted)'}}>{p.client||'—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}
 
-      {/* ── Leave ─────────────────────────────────────────────── */}
       {nav === 'leave' && (
         <>
           <div className="section-title" style={{marginTop:0}}>
             <h2>Leave &amp; Time off</h2>
-            <span className="hint">Your leave balance and requests</span>
+            <span className="hint">Your leave balance and requests for 2026</span>
           </div>
           <LeaveCard />
         </>
