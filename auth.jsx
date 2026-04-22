@@ -114,11 +114,30 @@ function LoginScreen({ onLogin }) {
     onLogin(r.user);
   };
 
-  const sendReset = (e) => {
+  const sendReset = async (e) => {
     e.preventDefault();
     if (!username.trim()) { setError('Enter your username first.'); return; }
+
+    // Check username exists
+    const u = Auth.getUsers().find(x => x.username.toLowerCase() === username.trim().toLowerCase());
+    if (!u) { setError('No account found with that username.'); return; }
+
     Auth.addReset(username.trim());
-    setSuccess('Password reset request sent to admin. You will be notified when it is reset.');
+
+    // Notify manager via email
+    try {
+      await window.sb.functions.invoke('notify-password-reset', {
+        body: {
+          employeeName: u.name,
+          username: u.username,
+          requestedAt: new Date().toISOString(),
+        },
+      });
+    } catch(e) {
+      console.warn('Reset email notification failed (non-critical):', e);
+    }
+
+    setSuccess('Reset request sent. Sanil will be notified and will share your new password shortly.');
     setError('');
     setForgot(false);
   };
