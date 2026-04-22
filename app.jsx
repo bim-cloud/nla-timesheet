@@ -211,7 +211,7 @@ function App() {
           }
         />
         {effectiveView === 'employee'
-          ? <EmployeeView featuresEnabled={features} user={user}/>
+          ? <EmployeeView featuresEnabled={features} user={user} activeNav={activeNav} setActiveNav={setActiveNav}/>
     : <ManagerView activeNav={activeNav} />}
       </div>
 
