@@ -599,7 +599,7 @@ function EmployeeView({ featuresEnabled, user, activeNav }) {
           </div>
           <WeeklyGrid user={user} />
           <div className="section-title">
-            <h2>Today&apos;s entries</h2>
+            <h2>Today's entries</h2>
             <span className="hint">{todayLabel}</span>
           </div>
           <div className="col-8-4">
@@ -646,7 +646,7 @@ function EmployeeView({ featuresEnabled, user, activeNav }) {
       {nav === 'leave' && (
         <>
           <div className="section-title" style={{marginTop:0}}>
-            <h2>Leave &amp; Time off</h2>
+            <h2>Leave & Time off</h2>
             <span className="hint">Your leave balance and requests for 2026</span>
           </div>
           <LeaveCard />
