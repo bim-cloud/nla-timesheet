@@ -540,7 +540,7 @@ function DesktopAgentBanner() {
   );
 }
 
-function EmployeeView({ featuresEnabled, user }) {
+function EmployeeView({ featuresEnabled, user, activeNav, setActiveNav }) {
   const [clockState, setClockState] = useStateEmp('working');
   const [entries, setEntries] = useStateEmp([]);
   const [entriesLoading, setEntriesLoading] = useStateEmp(true);
@@ -550,7 +550,6 @@ function EmployeeView({ featuresEnabled, user }) {
     if (!user?.id) return;
     const today = new Date().toISOString().split('T')[0];
     window.SupaEntries.forDay(user.id, today).then(rows => {
-      // Map Supabase rows to local shape
       const mapped = rows.map(r => ({
         id:      r.id,
         project: r.project_id,
@@ -562,41 +561,133 @@ function EmployeeView({ featuresEnabled, user }) {
       setEntries(mapped);
       setEntriesLoading(false);
     }).catch(() => {
-      // Fallback to sample data if Supabase unreachable
       setEntries(window.DATA.TODAY_ENTRIES);
       setEntriesLoading(false);
     });
   }, [user?.id]);
+
   const activity = window.useActivityTracker({ enabled: clockState === 'working', idleThresholdSec: 120 });
-  // seed in prior hours for realism
   const displayActivity = activity;
 
+  const today = new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+
+  // ── Dashboard tab ─────────────────────────────────────────────
+  if (!activeNav || activeNav === 'dashboard') {
+    return (
+      <div className="content">
+        <DesktopAgentBanner />
+        <ClockCard clockState={clockState} setClockState={setClockState} activity={displayActivity} user={user} />
+        <div className="section-title">
+          <h2>Today</h2>
+          <span className="hint">{today}</span>
+        </div>
+        <StatCards featuresEnabled={featuresEnabled} />
+        <div className="col-8-4">
+          <TodayEntries entries={entries} setEntries={setEntries} userId={user?.id} />
+          <WeekBars />
+        </div>
+      </div>
+    );
+  }
+
+  // ── My Timesheet tab ─────────────────────────────────────────
+  if (activeNav === 'timesheet') {
+    return (
+      <div className="content">
+        <div className="section-title" style={{marginTop: 0}}>
+          <h2>My Timesheet</h2>
+          <span className="hint">Weekly grid · log hours by project · submit for approval</span>
+        </div>
+        <WeeklyGrid user={user} />
+        <div className="section-title">
+          <h2>Today's entries</h2>
+          <span className="hint">Quick log · {today}</span>
+        </div>
+        <div className="col-8-4">
+          <TodayEntries entries={entries} setEntries={setEntries} userId={user?.id} />
+          <WeekBars />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Projects tab ──────────────────────────────────────────────
+  if (activeNav === 'projects') {
+    const projects = window.DATA.PROJECTS || [];
+    return (
+      <div className="content">
+        <div className="section-title" style={{marginTop: 0}}>
+          <h2>Projects</h2>
+          <span className="hint">Active projects · log time against any project</span>
+        </div>
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h3 className="card-title">Active projects</h3>
+              <div className="card-sub">{projects.length} projects · click to log time</div>
+            </div>
+          </div>
+          {projects.length === 0 ? (
+            <div style={{padding:'24px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>No projects configured.</div>
+          ) : (
+            <table className="team-table">
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Code</th>
+                  <th>Client</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {projects.map(p => (
+                  <tr key={p.id}>
+                    <td>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div style={{width:10,height:10,borderRadius:'50%',background:p.color||'#102347',flexShrink:0}}/>
+                        <span style={{fontWeight:500}}>{p.name}</span>
+                      </div>
+                    </td>
+                    <td style={{color:'var(--text-muted)',fontFamily:'var(--font-mono)',fontSize:12}}>{p.code}</td>
+                    <td style={{color:'var(--text-muted)'}}>{p.client || '—'}</td>
+                    <td>
+                      <button className="btn btn-sm btn-primary" onClick={() => setActiveNav && setActiveNav('timesheet')}>
+                        Log time
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Leave tab ─────────────────────────────────────────────────
+  if (activeNav === 'leave') {
+    return (
+      <div className="content">
+        <div className="section-title" style={{marginTop: 0}}>
+          <h2>Leave & Time off</h2>
+          <span className="hint">Your leave balance and requests</span>
+        </div>
+        <LeaveCard />
+      </div>
+    );
+  }
+
+  // Fallback — dashboard
   return (
     <div className="content">
       <DesktopAgentBanner />
       <ClockCard clockState={clockState} setClockState={setClockState} activity={displayActivity} user={user} />
-
-      <div className="section-title">
-        <h2>This week</h2>
-        <span className="hint">Mon, Apr 14 – Fri, Apr 18 · Week 16</span>
-      </div>
       <StatCards featuresEnabled={featuresEnabled} />
-
       <div className="col-8-4">
         <TodayEntries entries={entries} setEntries={setEntries} userId={user?.id} />
         <WeekBars />
       </div>
-
-      <div className="section-title">
-        <h2>Weekly timesheet</h2>
-        <span className="hint">Grid view · Edit hours inline</span>
-      </div>
-      <WeeklyGrid user={user} />
-
-      <div className="section-title">
-        <h2>Time off</h2>
-      </div>
-      <LeaveCard />
     </div>
   );
 }
