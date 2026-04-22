@@ -230,5 +230,20 @@ const SupaEntries = {
   },
 };
 
-window.SupaProfiles = SupaProfiles;
-window.SupaEntries  = SupaEntries;
+// ── Password helpers (stored in profiles.password column) ───
+const SupaPasswords = {
+  async update(userId, newPassword) {
+    const { error } = await sb.from('profiles').update({ password: newPassword }).eq('id', userId);
+    if (error) { console.warn('Password update error:', error.message); return false; }
+    return true;
+  },
+  async verify(userId, password) {
+    const { data, error } = await sb.from('profiles').select('password').eq('id', userId).single();
+    if (error || !data) return false;
+    return data.password === password;
+  },
+};
+
+window.SupaProfiles  = SupaProfiles;
+window.SupaEntries   = SupaEntries;
+window.SupaPasswords = SupaPasswords;
