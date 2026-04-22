@@ -130,7 +130,7 @@ function TeamOverviewTable() {
                         <span style={{width: `${pct}%`}}/>
                       </div>
                     </td>
-                    <td className="num">{row.weekHours.toFixed(1)} / {row.weekTarget}</td>
+                    <td className="num">{row.weekHours.toFixed(1)} / {row.weekTarget}h</td>
                     <td><button className="btn btn-ghost btn-sm"><Icon name="more" size={14}/></button></td>
                   </tr>
                 );
@@ -164,7 +164,7 @@ function ManagerStats() {
       const activeUsers = new Set(todayRows.map(e => e.user_id)).size;
       const todayHrs = todayRows.reduce((s, e) => s + parseFloat(e.hours), 0);
       const weekHrs = weekRows.reduce((s, e) => s + parseFloat(e.hours), 0);
-      const weekTarget = employees.length * 40;
+      const weekTarget = employees.length * 45;
       const util = weekTarget > 0 ? Math.round((weekHrs / weekTarget) * 100) : 0;
       window.SupaEntries.getPendingSubmissions().then(pending => {
         const groups = new Set(pending.map(e => e.user_id + e.date?.slice(0,7)));
