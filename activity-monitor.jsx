@@ -223,6 +223,98 @@ function ActivityMonitor() {
   );
 }
 
+
+const APP_META = {
+  revit:      { name: 'Autodesk Revit',   color: '#3fb6e6', cls: 'revit' },
+  acad:       { name: 'AutoCAD',          color: '#e8554e', cls: 'acad' },
+  navisworks: { name: 'Navisworks',       color: '#f59e0b', cls: 'sketch' },
+  civil3d:    { name: 'Civil 3D',         color: '#10b981', cls: 'teal' },
+  sketchup:   { name: 'SketchUp',         color: '#f9a03f', cls: 'sketch' },
+  teams:      { name: 'Teams',            color: '#6c7dd5', cls: 'teams' },
+  outlook:    { name: 'Outlook',          color: '#4a90d9', cls: 'outlook' },
+  pdf:        { name: 'PDF / Bluebeam',   color: '#9a6fe0', cls: 'pdf' },
+  excel:      { name: 'Excel',            color: '#1d7a44', cls: 'teal' },
+  word:       { name: 'Word',             color: '#1e56a0', cls: 'revit' },
+  chrome:     { name: 'Chrome',           color: '#fbbc04', cls: 'sketch' },
+  other:      { name: 'Other',            color: '#9ca3af', cls: 'other' },
+};
+
+function AppUsageSection({ userId }) {
+  const [appData, setAppData] = useStateAM(null);
+  const [loading, setLoading] = useStateAM(true);
+
+  useEffectAM(() => {
+    if (!userId) return;
+    const today = new Date().toISOString().split('T')[0];
+    window.SupaAppUsage.forDay(userId, today).then(agg => {
+      setAppData(agg);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [userId]);
+
+  const hasData = appData && Object.keys(appData).length > 0;
+  const totalSecs = hasData ? Object.values(appData).reduce((s,v) => s+v, 0) : 0;
+
+  const fmtSecs = (s) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return `${h}h ${String(m).padStart(2,'0')}m`;
+  };
+
+  return (
+    <>
+      <div className="section-title">
+        <h2 style={{fontSize:15}}>App tracking · today</h2>
+        <span className="hint">{hasData ? 'Live from desktop agent' : 'Requires Windows Desktop Agent'}</span>
+      </div>
+      {loading ? (
+        <div className="card" style={{padding:'24px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading…</div>
+      ) : !hasData ? (
+        <div className="card" style={{padding:'32px 28px',textAlign:'center'}}>
+          <div style={{width:52,height:52,borderRadius:12,background:'rgba(16,35,71,0.06)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px',color:'var(--brand-navy)'}}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          </div>
+          <p style={{margin:'0 0 4px',fontWeight:600,fontSize:14,color:'var(--text)'}}>Desktop agent not installed</p>
+          <p style={{margin:'0 0 16px',fontSize:13,color:'var(--text-muted)',maxWidth:360,marginLeft:'auto',marginRight:'auto'}}>
+            Install the NLA Windows agent on this employee's PC to track Revit, AutoCAD, Teams usage automatically.
+          </p>
+          <a href="/agent" target="_blank" style={{background:'var(--brand-navy)',color:'white',padding:'9px 18px',borderRadius:7,textDecoration:'none',fontSize:13,fontWeight:500}}>View setup guide →</a>
+        </div>
+      ) : (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">Application breakdown · today</h3>
+            <div className="card-sub">Focus time tracked by desktop agent · {fmtSecs(totalSecs)} total</div>
+          </div>
+          <table className="am-apps-table">
+            <thead><tr><th>Application</th><th>Time</th><th>Share</th></tr></thead>
+            <tbody>
+              {Object.entries(appData)
+                .sort(([,a],[,b]) => b - a)
+                .map(([key, secs]) => {
+                  const meta = APP_META[key] || APP_META.other;
+                  const pct = totalSecs > 0 ? (secs / totalSecs * 100) : 0;
+                  return (
+                    <tr key={key}>
+                      <td><span className={`bb-dot bb-${meta.cls}`}/>{meta.name}</td>
+                      <td className="mono">{fmtSecs(secs)}</td>
+                      <td>
+                        <div className="am-share">
+                          <div className="am-share-bar"><div className={`am-share-fill bb-${meta.cls}`} style={{width:`${pct}%`}}/></div>
+                          <span>{pct.toFixed(0)}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
 function ActivityDetail({ data, onBack }) {
   const days = ['Mon','Tue','Wed','Thu','Fri'];
   const maxDay = Math.max(...(data.weekByDay || [0]), 9);
@@ -291,29 +383,8 @@ function ActivityDetail({ data, onBack }) {
         )}
       </div>
 
-      {/* App tracking placeholder */}
-      <div className="section-title">
-        <h2 style={{fontSize:15}}>App tracking · timeline</h2>
-        <span className="hint">Requires Windows Desktop Agent</span>
-      </div>
-      <div className="card" style={{padding:'32px 28px',textAlign:'center'}}>
-        <div style={{
-          width:52,height:52,borderRadius:12,background:'rgba(16,35,71,0.06)',
-          display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px',color:'var(--brand-navy)'
-        }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-            <rect x="2" y="3" width="20" height="14" rx="2"/>
-            <path d="M8 21h8M12 17v4"/>
-          </svg>
-        </div>
-        <p style={{margin:'0 0 4px',fontWeight:600,fontSize:14,color:'var(--text)'}}>Desktop agent not installed</p>
-        <p style={{margin:'0 0 16px',fontSize:13,color:'var(--text-muted)',maxWidth:360,marginLeft:'auto',marginRight:'auto'}}>
-          App-level tracking (Revit, AutoCAD, Teams, etc.) and minute-by-minute timelines require the NLA Windows desktop agent running on the employee's PC.
-        </p>
-        <a href="/agent" target="_blank" style={{background:'var(--brand-navy)',color:'white',padding:'9px 18px',borderRadius:7,textDecoration:'none',fontSize:13,fontWeight:500}}>
-          View agent setup guide →
-        </a>
-      </div>
+      {/* App usage — real from desktop agent or placeholder */}
+      <AppUsageSection userId={data.id} />
 
       {/* Week bars - real data */}
       <div className="col-7-5">
