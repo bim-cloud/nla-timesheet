@@ -255,14 +255,16 @@ function Approvals() {
 
   const approve = async (sub) => {
     setActing(sub.key + '_approve');
-    await window.SupaEntries.approveSubmission(sub.entries);
+    const weekLabel = fmtWeek(sub.monday);
+    await window.SupaEntries.approveSubmission(sub.entries, sub.userId, weekLabel);
     load();
     setActing(null);
   };
 
   const reject = async (sub) => {
     setActing(sub.key + '_reject');
-    await window.SupaEntries.rejectSubmission(sub.entries);
+    const weekLabel = fmtWeek(sub.monday);
+    await window.SupaEntries.rejectSubmission(sub.entries, sub.userId, weekLabel);
     load();
     setActing(null);
   };
