@@ -296,3 +296,31 @@ const SupaNotifications = {
 };
 
 window.SupaNotifications = SupaNotifications;
+
+// ── App Usage (Desktop Agent) ──────────────────────────────────
+const SupaAppUsage = {
+  async forDay(userId, date) {
+    const { data, error } = await sb
+      .from('app_usage')
+      .select('app_key, focus_seconds')
+      .eq('user_id', userId)
+      .eq('date', date);
+    if (error) { console.warn('App usage fetch error:', error.message); return []; }
+    // Aggregate by app_key
+    const agg = {};
+    (data || []).forEach(r => {
+      agg[r.app_key] = (agg[r.app_key] || 0) + r.focus_seconds;
+    });
+    return agg;
+  },
+  async teamForDay(date) {
+    const { data, error } = await sb
+      .from('app_usage')
+      .select('user_id, app_key, focus_seconds')
+      .eq('date', date);
+    if (error) { console.warn('Team app usage error:', error.message); return []; }
+    return data || [];
+  },
+};
+
+window.SupaAppUsage = SupaAppUsage;
