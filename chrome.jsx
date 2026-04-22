@@ -2,10 +2,10 @@ const { useState, useEffect, useMemo } = React;
 
 function Sidebar({ view, activeNav, setActiveNav, user }) {
   const employeeNav = [
-    { id: 'dashboard', label: 'Dashboard', icon: 'home' },
-    { id: 'timesheet', label: 'My Timesheet', icon: 'clock' },
-    { id: 'projects', label: 'Projects', icon: 'briefcase' },
-    { id: 'leave', label: 'Leave', icon: 'calendar' },
+    { id: 'dashboard',  label: 'Dashboard',    icon: 'home' },
+    { id: 'timesheet',  label: 'My Timesheet', icon: 'clock' },
+    { id: 'projects',   label: 'Projects',     icon: 'briefcase' },
+    { id: 'leave',      label: 'Leave',        icon: 'calendar' },
   ];
   const managerNav = [
     { id: 'overview', label: 'Team Overview', icon: 'home' },
