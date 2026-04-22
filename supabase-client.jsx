@@ -198,23 +198,41 @@ const SupaEntries = {
   },
 
   // Approve a list of entry IDs
-  async approveSubmission(entryIds) {
+  async approveSubmission(entryIds, employeeId, weekLabel) {
     const { error } = await sb
       .from('entries')
       .update({ status: 'approved' })
       .in('id', entryIds);
-    if (error) console.warn('Approve error:', error.message);
-    return !error;
+    if (error) { console.warn('Approve error:', error.message); return false; }
+    // Notify employee
+    if (employeeId) {
+      await sb.from('notifications').insert({
+        user_id: employeeId,
+        type: 'approved',
+        title: 'Timesheet approved',
+        message: weekLabel ? `Your timesheet for ${weekLabel} has been approved.` : 'Your timesheet has been approved.',
+      });
+    }
+    return true;
   },
 
   // Reject a list of entry IDs (set back to draft so employee can resubmit)
-  async rejectSubmission(entryIds) {
+  async rejectSubmission(entryIds, employeeId, weekLabel) {
     const { error } = await sb
       .from('entries')
       .update({ status: 'draft' })
       .in('id', entryIds);
-    if (error) console.warn('Reject error:', error.message);
-    return !error;
+    if (error) { console.warn('Reject error:', error.message); return false; }
+    // Notify employee
+    if (employeeId) {
+      await sb.from('notifications').insert({
+        user_id: employeeId,
+        type: 'rejected',
+        title: 'Timesheet returned',
+        message: weekLabel ? `Your timesheet for ${weekLabel} has been returned. Please review and resubmit.` : 'Your timesheet has been returned for revision.',
+      });
+    }
+    return true;
   },
 
   // Manager: load all team entries + hours summary for a date range
@@ -247,3 +265,34 @@ const SupaPasswords = {
 window.SupaProfiles  = SupaProfiles;
 window.SupaEntries   = SupaEntries;
 window.SupaPasswords = SupaPasswords;
+
+// ── Notifications ──────────────────────────────────────────────
+const SupaNotifications = {
+  async getForUser(userId) {
+    const { data, error } = await sb
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (error) { console.warn('Notifications fetch error:', error.message); return []; }
+    return data || [];
+  },
+  async markRead(userId) {
+    await sb.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
+  },
+  async markOneRead(id) {
+    await sb.from('notifications').update({ read: true }).eq('id', id);
+  },
+  async create(userId, type, title, message) {
+    const { error } = await sb.from('notifications').insert({ user_id: userId, type, title, message });
+    if (error) console.warn('Notification create error:', error.message);
+  },
+  async getUnreadCount(userId) {
+    const { count, error } = await sb.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', userId).eq('read', false);
+    if (error) return 0;
+    return count || 0;
+  },
+};
+
+window.SupaNotifications = SupaNotifications;
