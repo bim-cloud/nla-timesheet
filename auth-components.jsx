@@ -472,3 +472,205 @@ function UsersAdmin() {
     </>
   );
 }
+
+
+// ── Notifications Panel ────────────────────────────────────────
+function NotificationsPanel({ user, open, onClose }) {
+  const [notifs, setNotifs] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!open || !user?.id) return;
+    setLoading(true);
+    window.SupaNotifications.getForUser(user.id).then(data => {
+      setNotifs(data);
+      setLoading(false);
+      // Mark all as read after opening
+      window.SupaNotifications.markRead(user.id);
+    }).catch(() => setLoading(false));
+  }, [open, user?.id]);
+
+  if (!open) return null;
+
+  const icon = (type) => {
+    if (type === 'approved') return { bg: 'rgba(29,138,74,0.12)', color: '#1d8a4a', symbol: '✓' };
+    if (type === 'rejected') return { bg: 'rgba(165,40,34,0.10)', color: '#a52822', symbol: '↩' };
+    return { bg: 'rgba(16,35,71,0.08)', color: '#102347', symbol: '●' };
+  };
+
+  const fmtDate = (iso) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMin = Math.round((now - d) / 60000);
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffH = Math.round(diffMin / 60);
+    if (diffH < 24) return `${diffH}h ago`;
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth: 400, marginTop: 60, marginRight: 20, marginLeft: 'auto'}}>
+        <div style={{padding: '18px 24px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+          <h3 style={{margin: 0, fontSize: 15}}>Notifications</h3>
+          <button onClick={onClose} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text-muted)', lineHeight: 1}}>&times;</button>
+        </div>
+
+        <div style={{maxHeight: 420, overflowY: 'auto'}}>
+          {loading ? (
+            <div style={{padding: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>Loading…</div>
+          ) : notifs.length === 0 ? (
+            <div style={{padding: '40px 24px', textAlign: 'center'}}>
+              <div style={{fontSize: 32, marginBottom: 10}}>🔔</div>
+              <p style={{margin: 0, color: 'var(--text-muted)', fontSize: 13}}>No notifications yet.</p>
+              <p style={{margin: '4px 0 0', color: 'var(--text-faint)', fontSize: 12}}>You will be notified when timesheets are approved or rejected.</p>
+            </div>
+          ) : notifs.map(n => {
+            const ic = icon(n.type);
+            return (
+              <div key={n.id} style={{
+                display: 'flex', gap: 12, padding: '14px 24px',
+                borderBottom: '1px solid var(--border)',
+                background: n.read ? 'transparent' : 'rgba(16,35,71,0.03)',
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+                  background: ic.bg, color: ic.color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 16, fontWeight: 700,
+                }}>{ic.symbol}</div>
+                <div style={{flex: 1, minWidth: 0}}>
+                  <div style={{fontSize: 13, fontWeight: n.read ? 400 : 600, color: 'var(--text)'}}>{n.title}</div>
+                  {n.message && <div style={{fontSize: 12, color: 'var(--text-muted)', marginTop: 2}}>{n.message}</div>}
+                  <div style={{fontSize: 11, color: 'var(--text-faint)', marginTop: 4}}>{fmtDate(n.created_at)}</div>
+                </div>
+                {!n.read && <div style={{width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, marginTop: 4}}/>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+window.NotificationsPanel = NotificationsPanel;
+
+// ── Settings Modal ─────────────────────────────────────────────
+function SettingsModal({ user, open, onClose }) {
+  const [tab, setTab] = React.useState('profile');
+  const [changePwOpen, setChangePwOpen] = React.useState(false);
+  const [tz, setTz] = React.useState(user?.tz || 'Asia/Dubai');
+  const [saved, setSaved] = React.useState(false);
+
+  React.useEffect(() => {
+    if (open) { setTab('profile'); setSaved(false); }
+  }, [open]);
+
+  if (!open) return null;
+
+  const TZ_OPTIONS = [
+    { tz: 'Asia/Dubai',    label: 'UAE (GST +4)' },
+    { tz: 'Asia/Kolkata',  label: 'India (IST +5:30)' },
+    { tz: 'Europe/London', label: 'UK (GMT/BST)' },
+    { tz: 'America/New_York', label: 'US East (EST/EDT)' },
+  ];
+
+  const saveProfile = () => {
+    Auth.updateUser(user.id, { tz, tzLabel: TZ_OPTIONS.find(t => t.tz === tz)?.label?.split(' ')[0] || 'UAE' });
+    const updated = Auth.getUsers().find(u => u.id === user.id);
+    if (updated) Auth.setSession(updated);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <>
+      <div className="modal-backdrop" onClick={onClose}>
+        <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth: 460}}>
+          <div style={{padding: '20px 28px 0', borderBottom: '1px solid var(--border)'}}>
+            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16}}>
+              <h3 style={{margin: 0, fontSize: 15}}>Settings</h3>
+              <button onClick={onClose} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text-muted)', lineHeight: 1}}>&times;</button>
+            </div>
+            <div style={{display: 'flex', gap: 0}}>
+              {[['profile','Profile'],['security','Security']].map(([id, label]) => (
+                <button key={id} onClick={() => setTab(id)} style={{
+                  padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
+                  fontSize: 13, fontWeight: tab === id ? 600 : 400,
+                  color: tab === id ? 'var(--accent)' : 'var(--text-muted)',
+                  borderBottom: tab === id ? '2px solid var(--accent)' : '2px solid transparent',
+                  marginBottom: -1,
+                }}>{label}</button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{padding: '24px 28px'}}>
+            {tab === 'profile' && (
+              <>
+                {/* User info (read-only) */}
+                <div style={{display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, padding: '14px 16px', background: 'var(--surface-muted)', borderRadius: 9}}>
+                  <div style={{width: 44, height: 44, borderRadius: 10, background: 'rgba(16,35,71,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 15, color: 'var(--brand-navy)'}}>
+                    {user.initials}
+                  </div>
+                  <div>
+                    <div style={{fontWeight: 600, fontSize: 14}}>{user.name}</div>
+                    <div style={{fontSize: 12, color: 'var(--text-muted)'}}>{user.role} · @{user.username}</div>
+                  </div>
+                </div>
+
+                {/* Timezone */}
+                <div className="field" style={{marginBottom: 16}}>
+                  <label>Timezone</label>
+                  <select className="input select" value={tz} onChange={(e) => setTz(e.target.value)}>
+                    {TZ_OPTIONS.map(t => (
+                      <option key={t.tz} value={t.tz}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {saved && <div className="login-success" style={{marginBottom: 12}}>Settings saved!</div>}
+
+                <div style={{display: 'flex', gap: 8, justifyContent: 'flex-end'}}>
+                  <button className="btn" onClick={onClose}>Cancel</button>
+                  <button className="btn btn-primary" onClick={saveProfile}>Save changes</button>
+                </div>
+              </>
+            )}
+
+            {tab === 'security' && (
+              <>
+                <div style={{marginBottom: 20}}>
+                  <div style={{fontSize: 14, fontWeight: 600, marginBottom: 4}}>Password</div>
+                  <div style={{fontSize: 13, color: 'var(--text-muted)', marginBottom: 12}}>
+                    Change your login password. You will need your current password.
+                  </div>
+                  <button className="btn btn-primary" onClick={() => { onClose(); setChangePwOpen(true); }}>
+                    Change password
+                  </button>
+                </div>
+
+                <div style={{borderTop: '1px solid var(--border)', paddingTop: 20}}>
+                  <div style={{fontSize: 14, fontWeight: 600, marginBottom: 4}}>Session</div>
+                  <div style={{fontSize: 13, color: 'var(--text-muted)', marginBottom: 12}}>
+                    Signed in as <strong>{user.username}</strong>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <window.ChangePasswordModal
+        user={user}
+        open={changePwOpen}
+        onClose={() => setChangePwOpen(false)}
+      />
+    </>
+  );
+}
+
+window.SettingsModal = SettingsModal;
