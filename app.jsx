@@ -129,6 +129,8 @@ function App() {
   const [brandColor, setBrandColor] = React.useState('#102347');
   const [features, setFeatures] = React.useState({ gps: false, photos: false, overtime: true });
   const [mgrUnlockOpen, setMgrUnlockOpen] = React.useState(false);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [notifOpen, setNotifOpen] = React.useState(false);
   const [mgrUnlocked, setMgrUnlocked] = React.useState(() => !!sessionStorage.getItem('nla_mgr_unlocked'));
 
   React.useEffect(() => { localStorage.setItem('nla_view', view); }, [view]);
@@ -193,7 +195,7 @@ function App() {
 
   return (
     <div className="app" data-screen-label={`NLA Timesheet · ${effectiveView}`}>
-      <Sidebar view={effectiveView} activeNav={activeNav} setActiveNav={setActiveNav} user={user} />
+      <Sidebar view={effectiveView} activeNav={activeNav} setActiveNav={setActiveNav} user={user} onSettings={() => setSettingsOpen(true)} onNotifications={() => setNotifOpen(true)} />
       <div className="main">
         <Topbar
           view={effectiveView}
@@ -237,6 +239,30 @@ function App() {
           persistEdit({ view: 'manager' });
         }}
       />
+
+      {/* Settings — Change Password */}
+      <window.ChangePasswordModal
+        user={user}
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
+
+      {/* Notifications panel */}
+      {notifOpen && (
+        <div className="modal-backdrop" onClick={() => setNotifOpen(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth:420}}>
+            <div style={{padding:'20px 28px 12px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <h3 style={{margin:0,fontSize:15}}>Notifications</h3>
+              <button onClick={() => setNotifOpen(false)} style={{background:'none',border:'none',cursor:'pointer',fontSize:18,color:'var(--text-muted)'}}>×</button>
+            </div>
+            <div style={{padding:'20px 28px 24px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>
+              <div style={{fontSize:28,marginBottom:10}}>🔔</div>
+              <p style={{margin:0}}>No new notifications.</p>
+              <p style={{margin:'4px 0 0',fontSize:12}}>You will be notified when your timesheet is approved or rejected.</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
