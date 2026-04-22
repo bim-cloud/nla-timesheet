@@ -1,6 +1,6 @@
 const { useState, useEffect, useMemo } = React;
 
-function Sidebar({ view, activeNav, setActiveNav, user }) {
+function Sidebar({ view, activeNav, setActiveNav, user, onSettings, onNotifications }) {
   const employeeNav = [
     { id: 'dashboard',  label: 'Dashboard',    icon: 'home' },
     { id: 'timesheet',  label: 'My Timesheet', icon: 'clock' },
@@ -40,10 +40,10 @@ function Sidebar({ view, activeNav, setActiveNav, user }) {
       ))}
 
       <div className="sidebar-section-label">Account</div>
-      <button className="nav-item">
+      <button className="nav-item" onClick={() => onNotifications && onNotifications()}>
         <Icon name="bell" /> Notifications
       </button>
-      <button className="nav-item">
+      <button className="nav-item" onClick={() => onSettings && onSettings()}>
         <Icon name="settings" /> Settings
       </button>
 
