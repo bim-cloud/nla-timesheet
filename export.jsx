@@ -79,8 +79,8 @@ async function exportToExcel(user, weekOffset) {
     {f:'SUM(G'+ds+':G'+de+')'},
   ]);
   wsData.push(['']);
-  wsData.push(['Total Hours:', grand.toFixed(2), '', 'Target:', '40.00', '', '']);
-  wsData.push(['Utilization:', grand > 0 ? (((grand/40)*100).toFixed(1)+'%') : '0%', '', '', '', '', '']);
+  wsData.push(['Total Hours:', grand.toFixed(2), '', 'Target:', '45.00', '', '']);
+  wsData.push(['Utilization:', grand > 0 ? (((grand/45)*100).toFixed(1)+'%') : '0%', '', '', '', '', '']);
 
   const ws = XLSX.utils.aoa_to_sheet(wsData);
   ws['!cols'] = [{wch:38},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12}];
@@ -176,7 +176,7 @@ async function exportToPDF(user, weekOffset) {
   const infoItems = [
     ['Employee', user.name], ['Role', user.role || '—'], ['Week', weekLabel],
     ['Total Hours', grand.toFixed(2)+'h'],
-    ['Utilization', grand > 0 ? (((grand/40)*100).toFixed(1)+'%') : '0%'],
+    ['Utilization', grand > 0 ? (((grand/45)*100).toFixed(1)+'%') : '0%'],
     ['Generated', fmtDate(today)],
   ];
   infoItems.forEach(function(item, i) {
@@ -341,7 +341,7 @@ async function exportTeamExcel() {
     });
     const total = byDay.reduce(function(a,b){return a+b;},0);
     summaryData.push([emp.name, emp.role].concat(byDay.map(function(h){return h>0?h:'';})).concat([
-      total>0?total:'', 40, total>0?(((total/40)*100).toFixed(1)+'%'):'0%'
+      total>0?total:'', 40, total>0?(((total/45)*100).toFixed(1)+'%'):'0%'
     ]));
   });
 
@@ -368,7 +368,7 @@ async function exportTeamPDF() {
   const weekRows = results[0], profiles = results[1];
   const employees = profiles.filter(function(p){ return p.user_type === 'employee'; });
   const totalHrs = weekRows.reduce(function(s,e){return s+parseFloat(e.hours);},0);
-  const target = employees.length * 40;
+  const target = employees.length * 45;
   const util = target > 0 ? ((totalHrs/target)*100).toFixed(1) : '0';
 
   const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
@@ -413,7 +413,7 @@ async function exportTeamPDF() {
     const total = byDay.reduce(function(a,b){return a+b;},0);
     return [emp.name, emp.role].concat(byDay.map(function(h){return h>0?h.toFixed(1):'—';})).concat([
       total>0?total.toFixed(1):'—',
-      total>0?(((total/40)*100).toFixed(0)+'%'):'0%',
+      total>0?(((total/45)*100).toFixed(0)+'%'):'0%',
     ]);
   });
 
