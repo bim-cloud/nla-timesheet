@@ -772,7 +772,7 @@ function ManagerView({ activeNav }) {
     <div className="content">
       <div className="section-title" style={{marginTop: 0}}>
         <h2>Studio snapshot</h2>
-        <span className="hint">Monday, April 20, 2026 · Week 16</span>
+        <span className="hint">{new Date().toLocaleDateString('en-GB', {weekday:'long',day:'numeric',month:'long',year:'numeric'})} · Week {Math.ceil((new Date() - new Date(new Date().getFullYear(),0,1)) / 604800000)}</span>
       </div>
       <ManagerStats />
 
