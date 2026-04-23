@@ -87,7 +87,7 @@ function ClockCard({ clockState, setClockState, activity, user }) {
 function StatCards({ featuresEnabled }) {
   const stats = [
     { label: 'Today', value: '0.00', unit: 'hrs', delta: 'Target 9h · 8:30am–6:30pm (1h break)', deltaClass: '' },
-    { label: 'This week', value: '32.5', unit: '/ 40 hrs', delta: '7.5 hrs remaining', deltaClass: '' },
+    { label: 'This week', value: '—', unit: '/ 45 hrs', delta: 'Live from timesheet', deltaClass: '' },
     { label: 'Overtime this month', value: '4.25', unit: 'hrs', delta: 'Within policy (≤8)', deltaClass: 'up' },
     { label: 'Leave balance', value: '18', unit: 'days', delta: '2 pending request', deltaClass: '' },
   ];
