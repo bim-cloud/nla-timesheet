@@ -187,9 +187,12 @@ function App() {
   };
 
   const title = `${greetingPrefix()}, ${user.name.split(' ')[0]}`;
+  const todayStr = new Date().toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
   const subtitle = effectiveView === 'employee'
-    ? "Monday, April 20 · Here's your day at a glance."
-    : "Monday, April 20 · Here's where the studio stands today.";
+    ? `${todayStr} · Here's your day at a glance.`
+    : `${todayStr} · Here's where the studio stands today.`;
 
   const logout = () => { Auth.clearSession(); setUser(null); };
 
