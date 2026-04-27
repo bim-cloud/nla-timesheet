@@ -754,43 +754,116 @@ function AppUsageBreakdown() {
 }
 
 function ManagerView({ activeNav }) {
-  if (activeNav === 'users') {
-    return (
-      <div className="content">
-        <div className="section-title" style={{marginTop: 0}}>
-          <h2>Users &amp; access</h2>
-          <span className="hint">Add accounts, reset passwords, manage roles</span>
-        </div>
-        <window.UsersAdmin />
-      </div>
-    );
-  }
-  if (activeNav === 'activity') {
-    return <window.ActivityMonitor />;
-  }
+  const nav = activeNav || 'overview';
+  const todayStr = new Date().toLocaleDateString('en-GB', {weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const weekNum = Math.ceil((new Date() - new Date(new Date().getFullYear(),0,1)) / 604800000);
+
   return (
     <div className="content">
-      <div className="section-title" style={{marginTop: 0}}>
-        <h2>Studio snapshot</h2>
-        <span className="hint">{new Date().toLocaleDateString('en-GB', {weekday:'long',day:'numeric',month:'long',year:'numeric'})} · Week {Math.ceil((new Date() - new Date(new Date().getFullYear(),0,1)) / 604800000)}</span>
-      </div>
-      <ManagerStats />
 
-      <TeamOverviewTable />
+      {/* ── Overview (default) ─────────────────────────────── */}
+      {(nav === 'overview' || nav === 'dashboard') && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>Studio snapshot</h2>
+            <span className="hint">{todayStr} · Week {weekNum}</span>
+          </div>
+          <ManagerStats />
+          <TeamOverviewTable />
+          <div className="section-title">
+            <h2>Projects &amp; approvals</h2>
+            <span className="hint">This week · all active projects</span>
+          </div>
+          <div className="col-8-4">
+            <ProjectHours />
+            <div className="col-stack">
+              <Approvals />
+              <WeekTotalsBars />
+            </div>
+          </div>
+          <AppUsageBreakdown />
+        </>
+      )}
 
-      <div className="section-title">
-        <h2>Projects &amp; approvals</h2>
-        <span className="hint">This week · all active projects</span>
-      </div>
-      <div className="col-8-4">
-        <ProjectHours />
-        <div className="col-stack">
+      {/* ── Approvals ──────────────────────────────────────── */}
+      {nav === 'approvals' && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>Pending approvals</h2>
+            <span className="hint">Review and approve submitted timesheets</span>
+          </div>
           <Approvals />
-          <WeekTotalsBars />
-        </div>
-      </div>
+        </>
+      )}
 
-      <AppUsageBreakdown />
+      {/* ── Projects ───────────────────────────────────────── */}
+      {nav === 'projects' && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>Projects</h2>
+            <span className="hint">Hours by project this week</span>
+          </div>
+          <ProjectHours />
+          <div className="section-title">
+            <h2>Weekly team hours</h2>
+            <span className="hint">Daily breakdown across the studio</span>
+          </div>
+          <WeekTotalsBars />
+        </>
+      )}
+
+      {/* ── Reports ────────────────────────────────────────── */}
+      {nav === 'reports' && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>Reports</h2>
+            <span className="hint">Export team timesheets for payroll</span>
+          </div>
+          <div className="card" style={{padding:'24px 28px'}}>
+            <div className="card-header" style={{marginBottom:20}}>
+              <div>
+                <h3 className="card-title">Team timesheet export</h3>
+                <div className="card-sub">Download this week's team data as Excel or PDF</div>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+              <button
+                className="btn btn-primary"
+                style={{display:'flex',alignItems:'center',gap:8,padding:'10px 20px'}}
+                onClick={() => window.exportTeamExcel && window.exportTeamExcel()}
+              >
+                <Icon name="download" size={15}/> Export Team Excel
+              </button>
+              <button
+                className="btn"
+                style={{display:'flex',alignItems:'center',gap:8,padding:'10px 20px',color:'#102347',borderColor:'#102347'}}
+                onClick={() => window.exportTeamPDF && window.exportTeamPDF()}
+              >
+                <Icon name="download" size={15}/> Export Team PDF
+              </button>
+            </div>
+            <div style={{marginTop:24,paddingTop:20,borderTop:'1px solid var(--border)'}}>
+              <div className="card-sub" style={{marginBottom:12}}>Team summary · this week</div>
+              <ManagerStats />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Activity ───────────────────────────────────────── */}
+      {nav === 'activity' && <window.ActivityMonitor />}
+
+      {/* ── Users ──────────────────────────────────────────── */}
+      {nav === 'users' && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>Users &amp; access</h2>
+            <span className="hint">Add accounts, reset passwords, manage roles</span>
+          </div>
+          <window.UsersAdmin />
+        </>
+      )}
+
     </div>
   );
 }
