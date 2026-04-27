@@ -1,4 +1,4 @@
-// ─── Activity / idle detection hook ───
+// --- Activity / idle detection hook ---
 // Mimics Autodesk Revit/AutoCAD time-tracking behavior:
 // - tracks mouse move, click, key, wheel, scroll
 // - after IDLE_THRESHOLD of inactivity, marks session idle and pauses the "active" counter
@@ -48,7 +48,7 @@ function useActivityTracker({ enabled, idleThresholdSec = 120 }) {
 
 window.useActivityTracker = useActivityTracker;
 
-// ─── User menu (topbar dropdown) ───
+// --- User menu (topbar dropdown) ---
 function UserMenu({ user, onLogout, onSwitchView }) {
   const [open, setOpen] = React.useState(false);
   const [changePwOpen, setChangePwOpen] = React.useState(false);
@@ -92,7 +92,7 @@ function UserMenu({ user, onLogout, onSwitchView }) {
 
 window.UserMenu = UserMenu;
 
-// ─── Idle resume modal ───
+// --- Idle resume modal ---
 function IdleModal({ idleFor, onResume, onDiscard }) {
   const mins = Math.floor(idleFor / 60);
   return (
@@ -127,7 +127,7 @@ const TZ_PRESETS = [
   { tz: 'Asia/Singapore',  tzLabel: 'SG',  title: 'Singapore (GMT+8)' },
 ];
 
-// ─── Users admin panel (manager) ───
+// --- Users admin panel (manager) ---
 function UsersAdmin() {
   const [users, setUsers] = React.useState(Auth.getUsers());
   const [resets, setResets] = React.useState(Auth.getResets());
@@ -507,7 +507,7 @@ function UsersAdmin() {
 }
 
 
-// ── Notifications Panel ────────────────────────────────────────
+// -- Notifications Panel ----------------------------------------
 function NotificationsPanel({ user, open, onClose }) {
   const [notifs, setNotifs] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -590,7 +590,7 @@ function NotificationsPanel({ user, open, onClose }) {
 
 window.NotificationsPanel = NotificationsPanel;
 
-// ── Settings Modal ─────────────────────────────────────────────
+// -- Settings Modal ---------------------------------------------
 function SettingsModal({ user, open, onClose }) {
   const [tab, setTab] = React.useState('profile');
   const [changePwOpen, setChangePwOpen] = React.useState(false);
