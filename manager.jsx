@@ -1,147 +1,351 @@
+// ── Team Timesheet Overview ────────────────────────────────────
+// Shows weekly/monthly hours per employee with navigation
+
 function TeamOverviewTable() {
+  const [view, setView] = React.useState('week');           // 'week' | 'month'
+  const [weekOffset, setWeekOffset] = React.useState(0);   // 0 = this week, -1 = last week etc
+  const [monthOffset, setMonthOffset] = React.useState(0); // 0 = this month
   const [teamData, setTeamData] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
-  const projById = (id) => (window.DATA.PROJECTS || []).find(p => p.id === id);
+  const [expandedRow, setExpandedRow] = React.useState(null);
 
-  const today = new Date().toISOString().split('T')[0];
-
-  // Get Monday of current week
-  const getMonday = () => {
+  // ── Date helpers ─────────────────────────────────────────────
+  const getWeekDates = (offset) => {
     const d = new Date();
     const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    d.setDate(diff);
-    return d.toISOString().split('T')[0];
+    d.setDate(d.getDate() - day + (day === 0 ? -6 : 1) + offset * 7);
+    const mon = d.toISOString().split('T')[0];
+    const fri = new Date(d); fri.setDate(d.getDate() + 4);
+    return { from: mon, to: fri.toISOString().split('T')[0], days: 5 };
   };
 
-  React.useEffect(() => {
-    Promise.all([
-      window.SupaEntries.teamForDay(today),
-      window.SupaEntries.teamSummary(getMonday(), today),
-      window.SupaProfiles.getAll(),
-    ]).then(([todayEntries, weekEntries, profiles]) => {
-      // Group today hours by user
+  const getMonthDates = (offset) => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + offset);
+    const from = d.toISOString().split('T')[0];
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return { from, to: last.toISOString().split('T')[0], days: last.getDate() };
+  };
+
+  const getRange = () => view === 'week' ? getWeekDates(weekOffset) : getMonthDates(monthOffset);
+
+  const fmtRangeLabel = () => {
+    const { from, to } = getRange();
+    const s = new Date(from + 'T00:00:00');
+    const e = new Date(to + 'T00:00:00');
+    if (view === 'week') {
+      const isThisWeek = weekOffset === 0;
+      const prefix = isThisWeek ? 'This week · ' : weekOffset === -1 ? 'Last week · ' : '';
+      return prefix + s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' – ' +
+             e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    } else {
+      return s.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    }
+  };
+
+  // ── Data loading ─────────────────────────────────────────────
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    const { from, to } = getRange();
+    const today = new Date().toISOString().split('T')[0];
+    try {
+      const [periodEntries, todayEntries, profiles] = await Promise.all([
+        window.SupaEntries.teamSummary(from, to),
+        window.SupaEntries.teamForDay(today),
+        window.SupaProfiles.getAll(),
+      ]);
+
       const todayByUser = {};
       todayEntries.forEach(e => {
         todayByUser[e.user_id] = (todayByUser[e.user_id] || 0) + parseFloat(e.hours);
       });
-      // Group week hours by user
-      const weekByUser = {};
-      weekEntries.forEach(e => {
-        weekByUser[e.user_id] = (weekByUser[e.user_id] || 0) + parseFloat(e.hours);
+
+      const employees = profiles.filter(p => p.user_type === 'employee');
+
+      const rows = employees.map(emp => {
+        const empEntries = periodEntries.filter(e => e.user_id === emp.id);
+        const totalHours = empEntries.reduce((s, e) => s + parseFloat(e.hours), 0);
+        const byDate = {};
+        empEntries.forEach(e => {
+          byDate[e.date] = (byDate[e.date] || 0) + parseFloat(e.hours);
+        });
+        const submittedCount = empEntries.filter(e => e.status === 'submitted').length;
+        const approvedCount  = empEntries.filter(e => e.status === 'approved').length;
+        const lastProject = empEntries.length > 0 ? (empEntries[empEntries.length-1].project_name || empEntries[empEntries.length-1].project_id) : '—';
+        const target = view === 'week' ? 45 : 45 * 4;
+        const util = target > 0 ? Math.round((totalHours / target) * 100) : 0;
+
+        return {
+          id: emp.id, name: emp.name, role: emp.role,
+          initials: emp.initials,
+          totalHours, byDate, target, util,
+          hoursToday: todayByUser[emp.id] || 0,
+          submittedCount, approvedCount,
+          lastProject,
+          daysActive: Object.keys(byDate).length,
+        };
       });
-      // Last project per user (from today entries)
-      const lastProjByUser = {};
-      todayEntries.forEach(e => { lastProjByUser[e.user_id] = e.project_id; });
 
-      const rows = profiles
-        .filter(p => p.user_type === 'employee')
-        .map(p => ({
-          id:            p.id,
-          name:          p.name,
-          role:          p.role,
-          initials:      p.initials,
-          hoursToday:    todayByUser[p.id] || 0,
-          weekHours:     weekByUser[p.id] || 0,
-          weekTarget:    40,
-          currentProject: lastProjByUser[p.id] || null,
-        }));
-      setTeamData(rows);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
+      setTeamData(rows.sort((a,b) => b.totalHours - a.totalHours));
+    } catch(e) { console.error('TeamOverview load error:', e); }
+    setLoading(false);
+  }, [view, weekOffset, monthOffset]);
 
-  const statusBadge = (hoursToday) => {
-    if (hoursToday > 0) return <span className="badge success"><span className="dot"/>Working</span>;
-    return <span className="badge"><span className="dot"/>No entries yet</span>;
-  };
+  React.useEffect(() => { load(); }, [load]);
 
-  const todayLabel = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  const totalStudioHours = teamData.reduce((s, r) => s + r.totalHours, 0);
+  const activeCount = teamData.filter(r => r.totalHours > 0).length;
+  const projById = (id) => (window.DATA.PROJECTS || []).find(p => p.id === id);
+
+  const utilColor = (u) => u >= 100 ? '#1d8a4a' : u >= 75 ? '#a87220' : u > 0 ? '#a52822' : 'var(--text-muted)';
 
   return (
     <div className="card">
-      <div className="card-header">
+      {/* ── Header ─────────────────────────────────────────── */}
+      <div className="card-header" style={{flexWrap:'wrap',gap:10}}>
         <div>
-          <h3 className="card-title">Team — today</h3>
-          <div className="card-sub">Live from Supabase · {todayLabel}</div>
+          <h3 className="card-title">Team timesheet · {fmtRangeLabel()}</h3>
+          <div className="card-sub">
+            {loading ? 'Loading…' : `${activeCount} of ${teamData.length} employees logged hours · ${totalStudioHours.toFixed(1)}h total`}
+          </div>
         </div>
-        <div style={{display: 'flex', gap: 6}}>
-          <button className="btn btn-sm"><Icon name="filter" size={14}/> All teams</button>
-          <button
-            className="btn btn-sm"
-            onClick={() => window.exportTeamExcel && window.exportTeamExcel()}
-            style={{display:'flex',alignItems:'center',gap:5}}
-          >
-            <Icon name="download" size={13}/> Excel
+        <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+          {/* View toggle */}
+          <div style={{display:'flex',background:'var(--surface-muted)',borderRadius:7,padding:2,gap:2}}>
+            {[['week','Week'],['month','Month']].map(([id,label]) => (
+              <button key={id} onClick={() => { setView(id); setWeekOffset(0); setMonthOffset(0); }}
+                style={{padding:'4px 12px',borderRadius:5,border:'none',cursor:'pointer',fontSize:12,
+                  background: view===id ? 'white' : 'transparent',
+                  fontWeight: view===id ? 600 : 400,
+                  color: view===id ? 'var(--text)' : 'var(--text-muted)',
+                  boxShadow: view===id ? '0 0 0 0.5px var(--border)' : 'none',
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* Navigation */}
+          <button className="btn btn-sm" onClick={() => view==='week' ? setWeekOffset(w=>w-1) : setMonthOffset(m=>m-1)}>←</button>
+          <button className="btn btn-sm"
+            style={{fontSize:11}}
+            onClick={() => view==='week' ? setWeekOffset(0) : setMonthOffset(0)}>
+            {view==='week' ? 'This week' : 'This month'}
           </button>
-          <button
-            className="btn btn-sm"
-            onClick={() => window.exportTeamPDF && window.exportTeamPDF()}
-            style={{display:'flex',alignItems:'center',gap:5,color:'#102347',borderColor:'#102347'}}
-          >
-            <Icon name="download" size={13}/> PDF
+          <button className="btn btn-sm"
+            disabled={(view==='week'&&weekOffset>=0)||(view==='month'&&monthOffset>=0)}
+            onClick={() => view==='week' ? setWeekOffset(w=>w+1) : setMonthOffset(m=>m+1)}>→</button>
+          {/* Export */}
+          <button className="btn btn-sm" onClick={() => window.exportTeamExcel && window.exportTeamExcel()}
+            style={{display:'flex',alignItems:'center',gap:4}}>
+            <Icon name="download" size={12}/> Excel
           </button>
+          <button className="btn btn-sm" onClick={() => window.exportTeamPDF && window.exportTeamPDF()}
+            style={{display:'flex',alignItems:'center',gap:4,color:'#102347',borderColor:'#102347'}}>
+            <Icon name="download" size={12}/> PDF
+          </button>
+          <button className="btn btn-sm" onClick={load} title="Refresh"><Icon name="refresh" size={13}/></button>
         </div>
       </div>
 
-      {loading ? (
-        <div style={{padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>
-          Loading team data…
+      {/* ── Summary stats strip ─────────────────────────────── */}
+      {!loading && teamData.length > 0 && (
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:0,borderBottom:'1px solid var(--border)'}}>
+          {[
+            ['Studio total', totalStudioHours.toFixed(1)+'h', 'Period hours logged'],
+            ['Active staff', activeCount+' / '+teamData.length, 'Logged at least 1 entry'],
+            ['Avg per person', teamData.length>0?(totalStudioHours/teamData.length).toFixed(1)+'h':'—', 'Studio average'],
+            ['Avg utilization', teamData.length>0?Math.round(teamData.reduce((s,r)=>s+r.util,0)/teamData.length)+'%':'—', 'vs target'],
+          ].map(([lbl,val,sub])=>(
+            <div key={lbl} style={{padding:'12px 20px',borderRight:'1px solid var(--border)'}}>
+              <div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.06em'}}>{lbl}</div>
+              <div style={{fontSize:20,fontWeight:700,color:'var(--text)',fontFamily:'var(--font-mono)',margin:'3px 0 2px'}}>{val}</div>
+              <div style={{fontSize:11,color:'var(--text-faint)'}}>{sub}</div>
+            </div>
+          ))}
         </div>
+      )}
+
+      {/* ── Employee rows ───────────────────────────────────── */}
+      {loading ? (
+        <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading team data…</div>
       ) : teamData.length === 0 ? (
-        <div style={{padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>
-          No employee profiles found. Employees need to log in once to appear here.
+        <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>
+          No employee profiles found. Employees need to log in at least once to appear here.
         </div>
       ) : (
-        <div style={{overflowX: 'auto'}}>
+        <div style={{overflowX:'auto'}}>
           <table className="team-table">
             <thead>
               <tr>
-                <th>Employee</th>
-                <th>Status</th>
-                <th>Last project logged</th>
-                <th className="num">Today</th>
-                <th>Week progress</th>
-                <th className="num">Week hrs</th>
-                <th></th>
+                <th style={{width:220}}>Employee</th>
+                <th>Last project</th>
+                <th className="num" style={{width:80}}>Today</th>
+                <th className="num" style={{width:100}}>{view==='week'?'Week hrs':'Month hrs'}</th>
+                <th style={{width:140}}>Progress</th>
+                <th className="num" style={{width:70}}>Util %</th>
+                <th style={{width:90}}>Status</th>
+                <th style={{width:40}}></th>
               </tr>
             </thead>
             <tbody>
               {teamData.map(row => {
-                const p = projById(row.currentProject);
-                const pct = Math.min(100, (row.weekHours / row.weekTarget) * 100);
-                const over = row.weekHours > row.weekTarget;
+                const pct = Math.min(100, row.util);
+                const isExpanded = expandedRow === row.id;
                 return (
-                  <tr key={row.id}>
-                    <td>
-                      <div className="team-cell-emp">
-                        <div className="avatar">{row.initials}</div>
-                        <div>
-                          <div className="name">{row.name}</div>
-                          <div className="role">{row.role}</div>
+                  <React.Fragment key={row.id}>
+                    <tr style={{cursor:'pointer'}} onClick={() => setExpandedRow(isExpanded ? null : row.id)}>
+                      <td>
+                        <div className="team-cell-emp">
+                          <div className="avatar">{row.initials}</div>
+                          <div>
+                            <div className="name">{row.name}</div>
+                            <div className="role">{row.role}</div>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td>{statusBadge(row.hoursToday)}</td>
-                    <td style={{color: 'var(--text-muted)'}}>{p?.name || row.currentProject || '—'}</td>
-                    <td className="num">{row.hoursToday.toFixed(2)}h</td>
-                    <td>
-                      <div className={`util-bar ${over ? 'over' : ''}`}>
-                        <span style={{width: `${pct}%`}}/>
-                      </div>
-                    </td>
-                    <td className="num">{row.weekHours.toFixed(1)} / {row.weekTarget}h</td>
-                    <td><button className="btn btn-ghost btn-sm"><Icon name="more" size={14}/></button></td>
-                  </tr>
+                      </td>
+                      <td style={{color:'var(--text-muted)',fontSize:12}}>{row.lastProject}</td>
+                      <td className="num" style={{fontWeight: row.hoursToday>0?600:400, color: row.hoursToday>0?'var(--accent)':'var(--text-muted)'}}>
+                        {row.hoursToday > 0 ? row.hoursToday.toFixed(1)+'h' : '—'}
+                      </td>
+                      <td className="num" style={{fontWeight:600}}>{row.totalHours > 0 ? row.totalHours.toFixed(1)+'h' : '—'}</td>
+                      <td>
+                        <div className="util-bar" style={{height:6}}>
+                          <span style={{width:`${pct}%`, background: utilColor(row.util), borderRadius:3}}/>
+                        </div>
+                        <div style={{fontSize:10,color:'var(--text-faint)',marginTop:2}}>{row.totalHours.toFixed(1)} / {row.target}h</div>
+                      </td>
+                      <td className="num" style={{fontWeight:700, color: utilColor(row.util)}}>{row.util}%</td>
+                      <td>
+                        {row.approvedCount > 0 ? (
+                          <span className="badge success" style={{fontSize:10}}>Approved</span>
+                        ) : row.submittedCount > 0 ? (
+                          <span className="badge warning" style={{fontSize:10}}>Pending</span>
+                        ) : row.totalHours > 0 ? (
+                          <span className="badge" style={{fontSize:10}}>Draft</span>
+                        ) : (
+                          <span className="badge" style={{fontSize:10,color:'var(--text-faint)'}}>No entries</span>
+                        )}
+                      </td>
+                      <td style={{textAlign:'center',color:'var(--text-muted)'}}>
+                        {isExpanded ? '▲' : '▼'}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={8} style={{padding:0,background:'var(--surface-muted)'}}>
+                          <TeamEmployeeBreakdown employee={row} range={getRange()} view={view} />
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr style={{background:'rgba(16,35,71,0.04)'}}>
+                <td colSpan={2} style={{padding:'10px 12px',fontWeight:600,fontSize:13}}>Studio Total</td>
+                <td className="num" style={{fontWeight:600}}>{teamData.reduce((s,r)=>s+r.hoursToday,0).toFixed(1)}h</td>
+                <td className="num" style={{fontWeight:700,color:'var(--brand-navy)'}}>{totalStudioHours.toFixed(1)}h</td>
+                <td colSpan={4}></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
     </div>
   );
 }
+
+// ── Per-employee expanded breakdown ────────────────────────────
+function TeamEmployeeBreakdown({ employee, range, view }) {
+  const [entries, setEntries] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    window.SupaEntries.teamSummary(range.from, range.to)
+      .then(all => {
+        const mine = all.filter(e => e.user_id === employee.id);
+        setEntries(mine);
+        setLoading(false);
+      }).catch(() => setLoading(false));
+  }, [employee.id, range.from, range.to]);
+
+  if (loading) return <div style={{padding:'16px 24px',fontSize:13,color:'var(--text-muted)'}}>Loading…</div>;
+  if (entries.length === 0) return <div style={{padding:'16px 24px',fontSize:13,color:'var(--text-muted)'}}>No entries in this period.</div>;
+
+  // Group by date
+  const byDate = {};
+  entries.forEach(e => {
+    if (!byDate[e.date]) byDate[e.date] = { hours: 0, projects: {} };
+    byDate[e.date].hours += parseFloat(e.hours);
+    const pk = e.project_name || e.project_id || '—';
+    byDate[e.date].projects[pk] = (byDate[e.date].projects[pk] || 0) + parseFloat(e.hours);
+  });
+
+  // Group by project
+  const byProject = {};
+  entries.forEach(e => {
+    const pk = e.project_name || e.project_id || '—';
+    byProject[pk] = (byProject[pk] || 0) + parseFloat(e.hours);
+  });
+
+  const sortedDates = Object.keys(byDate).sort();
+  const fmtDay = (d) => new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+
+  return (
+    <div style={{padding:'16px 24px 20px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+      {/* Daily breakdown */}
+      <div>
+        <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--text-muted)',marginBottom:8}}>
+          Daily hours
+        </div>
+        <table style={{width:'100%',fontSize:12,borderCollapse:'collapse'}}>
+          <thead>
+            <tr>
+              <th style={{textAlign:'left',padding:'4px 8px',color:'var(--text-faint)',fontWeight:500}}>Date</th>
+              <th style={{textAlign:'right',padding:'4px 8px',color:'var(--text-faint)',fontWeight:500}}>Hours</th>
+              <th style={{textAlign:'left',padding:'4px 8px',color:'var(--text-faint)',fontWeight:500}}>Projects</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedDates.map(date => (
+              <tr key={date} style={{borderTop:'1px solid var(--border)'}}>
+                <td style={{padding:'5px 8px',color:'var(--text)'}}>{fmtDay(date)}</td>
+                <td style={{padding:'5px 8px',textAlign:'right',fontWeight:600,color:'var(--accent)',fontFamily:'var(--font-mono)'}}>{byDate[date].hours.toFixed(1)}h</td>
+                <td style={{padding:'5px 8px',color:'var(--text-muted)',fontSize:11}}>
+                  {Object.entries(byDate[date].projects).map(([p,h])=>`${p} (${h.toFixed(1)}h)`).join(', ')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {/* Project breakdown */}
+      <div>
+        <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--text-muted)',marginBottom:8}}>
+          By project
+        </div>
+        {Object.entries(byProject).sort(([,a],[,b])=>b-a).map(([proj,hrs]) => {
+          const total = employee.totalHours || 1;
+          const pct = (hrs/total)*100;
+          return (
+            <div key={proj} style={{marginBottom:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
+                <span style={{color:'var(--text)'}}>{proj}</span>
+                <span style={{fontWeight:600,color:'var(--accent)',fontFamily:'var(--font-mono)'}}>{hrs.toFixed(1)}h · {pct.toFixed(0)}%</span>
+              </div>
+              <div style={{height:5,background:'var(--border)',borderRadius:3,overflow:'hidden'}}>
+                <div style={{width:`${pct}%`,height:'100%',background:'#102347',borderRadius:3}}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 
 function ManagerStats() {
   const [stats, setStats] = React.useState({
