@@ -1,4 +1,4 @@
-// ─── Auth store (localStorage-backed) ───
+// --- Auth store (localStorage-backed) ---
 // Seed users. Manager (admin) can add/reset passwords.
 const AUTH_KEY = 'nla_users_v3';
 const SESSION_KEY = 'nla_session_v1';
@@ -123,7 +123,7 @@ const Auth = {
 
 window.Auth = Auth;
 
-// ─── Login screen ───
+// --- Login screen ---
 function LoginScreen({ onLogin }) {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -258,7 +258,7 @@ function LoginScreen({ onLogin }) {
 
 window.LoginScreen = LoginScreen;
 
-// ─── Change Password Modal ─────────────────────────────────────
+// --- Change Password Modal -------------------------------------
 function ChangePasswordModal({ user, open, onClose }) {
   const [current, setCurrent] = React.useState('');
   const [newPw, setNewPw] = React.useState('');
