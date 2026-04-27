@@ -144,6 +144,33 @@ function UsersAdmin() {
   const selfId = session?.id;
 
   const refresh = () => { setUsers(Auth.getUsers()); setResets(Auth.getResets()); };
+  const [syncing, setSyncing] = React.useState(false);
+  const [syncMsg, setSyncMsg] = React.useState('');
+
+  const syncAllToSupabase = async () => {
+    setSyncing(true);
+    setSyncMsg('Syncing...');
+    const allUsers = Auth.getUsers();
+    let count = 0;
+    for (const u of allUsers) {
+      try {
+        await window.SupaProfiles.upsert({
+          id: u.id, username: u.username, name: u.name,
+          role: u.role || '', type: u.type || 'employee',
+          initials: u.initials || u.name.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase(),
+          tz: u.tz || 'Asia/Dubai', tzLabel: u.tzLabel || 'UAE',
+        });
+        // Sync password too
+        if (u.password && window.sb) {
+          await window.sb.from('profiles').update({ password: u.password }).eq('id', u.id);
+        }
+        count++;
+      } catch(e) { console.warn('Sync error for', u.username, e); }
+    }
+    setSyncMsg(`Synced ${count}/${allUsers.length} users to Supabase`);
+    setSyncing(false);
+    setTimeout(() => setSyncMsg(''), 4000);
+  };
 
   const toggleReveal = (id) => setRevealed(r => ({ ...r, [id]: !r[id] }));
 
@@ -223,6 +250,12 @@ function UsersAdmin() {
               <Icon name={revealAll ? 'eyeOff' : 'eye'} size={14}/>
               {revealAll ? 'Hide passwords' : 'Show passwords'}
             </button>
+            <button className="btn btn-sm" onClick={syncAllToSupabase} disabled={syncing}
+              style={{fontSize:12,color:'#1d8a4a',borderColor:'#1d8a4a'}}
+              title="Fix missing users in Supabase">
+              {syncing ? 'Syncing...' : 'Sync → Supabase'}
+            </button>
+            {syncMsg && <span style={{fontSize:11,color:'#1d8a4a'}}>{syncMsg}</span>}
             <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Icon name="plus" size={14}/> Add user</button>
           </div>
         </div>
