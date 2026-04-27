@@ -1,4 +1,4 @@
-// ── Team Timesheet Overview ────────────────────────────────────
+// -- Team Timesheet Overview ------------------------------------
 // Shows weekly/monthly hours per employee with navigation
 
 function TeamOverviewTable() {
@@ -9,7 +9,7 @@ function TeamOverviewTable() {
   const [loading, setLoading] = React.useState(true);
   const [expandedRow, setExpandedRow] = React.useState(null);
 
-  // ── Date helpers ─────────────────────────────────────────────
+  // -- Date helpers ---------------------------------------------
   const getWeekDates = (offset) => {
     const d = new Date();
     const day = d.getDay();
@@ -44,7 +44,7 @@ function TeamOverviewTable() {
     }
   };
 
-  // ── Data loading ─────────────────────────────────────────────
+  // -- Data loading ---------------------------------------------
   const load = React.useCallback(async () => {
     setLoading(true);
     const { from, to } = getRange();
@@ -102,7 +102,7 @@ function TeamOverviewTable() {
 
   return (
     <div className="card">
-      {/* ── Header ─────────────────────────────────────────── */}
+      {/* -- Header ------------------------------------------- */}
       <div className="card-header" style={{flexWrap:'wrap',gap:10}}>
         <div>
           <h3 className="card-title">Team timesheet · {fmtRangeLabel()}</h3>
@@ -148,7 +148,7 @@ function TeamOverviewTable() {
         </div>
       </div>
 
-      {/* ── Summary stats strip ─────────────────────────────── */}
+      {/* -- Summary stats strip ------------------------------- */}
       {!loading && teamData.length > 0 && (
         <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:0,borderBottom:'1px solid var(--border)'}}>
           {[
@@ -166,7 +166,7 @@ function TeamOverviewTable() {
         </div>
       )}
 
-      {/* ── Employee rows ───────────────────────────────────── */}
+      {/* -- Employee rows ------------------------------------- */}
       {loading ? (
         <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading team data…</div>
       ) : teamData.length === 0 ? (
@@ -257,7 +257,7 @@ function TeamOverviewTable() {
   );
 }
 
-// ── Per-employee expanded breakdown ────────────────────────────
+// -- Per-employee expanded breakdown ----------------------------
 function TeamEmployeeBreakdown({ employee, range, view }) {
   const [entries, setEntries] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -543,7 +543,7 @@ function Approvals() {
   );
 }
 
-// ── Timesheet Review Modal ─────────────────────────────────────
+// -- Timesheet Review Modal -------------------------------------
 function ReviewModal({ sub, onClose, onApprove, onReject }) {
   const [entries, setEntries] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -1164,7 +1164,7 @@ function ManagerView({ activeNav }) {
   return (
     <div className="content">
 
-      {/* ── Overview (default) ─────────────────────────────── */}
+      {/* -- Overview (default) ------------------------------- */}
       {(nav === 'overview' || nav === 'dashboard') && (
         <>
           <div className="section-title" style={{marginTop:0}}>
@@ -1174,7 +1174,7 @@ function ManagerView({ activeNav }) {
           <ManagerStats />
           <TeamOverviewTable />
           <div className="section-title">
-            <h2>Projects &amp; approvals</h2>
+            <h2>Projects & approvals</h2>
             <span className="hint">This week · all active projects</span>
           </div>
           <div className="col-8-4">
@@ -1188,7 +1188,7 @@ function ManagerView({ activeNav }) {
         </>
       )}
 
-      {/* ── Approvals ──────────────────────────────────────── */}
+      {/* -- Approvals ---------------------------------------- */}
       {nav === 'approvals' && (
         <>
           <div className="section-title" style={{marginTop:0}}>
@@ -1199,7 +1199,7 @@ function ManagerView({ activeNav }) {
         </>
       )}
 
-      {/* ── Projects ───────────────────────────────────────── */}
+      {/* -- Projects ----------------------------------------- */}
       {nav === 'projects' && (
         <>
           <div className="section-title" style={{marginTop:0}}>
@@ -1215,7 +1215,7 @@ function ManagerView({ activeNav }) {
         </>
       )}
 
-      {/* ── Reports ────────────────────────────────────────── */}
+      {/* -- Reports ------------------------------------------ */}
       {nav === 'reports' && (
         <>
           <div className="section-title" style={{marginTop:0}}>
@@ -1233,7 +1233,8 @@ function ManagerView({ activeNav }) {
               <button
                 className="btn btn-primary"
                 style={{display:'flex',alignItems:'center',gap:8,padding:'10px 20px'}}
-                <window.TeamExportButtons />
+                <button className="btn btn-sm" onClick={() => { const TB = window.TeamExportButtons; if(TB) { const el = document.createElement('div'); } window.exportTeamExcel && window.exportTeamExcel(window._exportOptions); }} style={{display:'flex',alignItems:'center',gap:4}}><Icon name="download" size={12}/> Excel</button>
+          <button className="btn btn-sm" onClick={() => window.exportTeamPDF && window.exportTeamPDF(window._exportOptions)} style={{display:'flex',alignItems:'center',gap:4,color:'#102347',borderColor:'#102347'}}><Icon name="download" size={12}/> PDF</button>
             </div>
             <div style={{marginTop:24,paddingTop:20,borderTop:'1px solid var(--border)'}}>
               <div className="card-sub" style={{marginBottom:12}}>Team summary · this week</div>
@@ -1243,14 +1244,14 @@ function ManagerView({ activeNav }) {
         </>
       )}
 
-      {/* ── Activity ───────────────────────────────────────── */}
+      {/* -- Activity ----------------------------------------- */}
       {nav === 'activity' && <window.ActivityMonitor />}
 
-      {/* ── Users ──────────────────────────────────────────── */}
+      {/* -- Users -------------------------------------------- */}
       {nav === 'users' && (
         <>
           <div className="section-title" style={{marginTop:0}}>
-            <h2>Users &amp; access</h2>
+            <h2>Users & access</h2>
             <span className="hint">Add accounts, reset passwords, manage roles</span>
           </div>
           <window.UsersAdmin />
