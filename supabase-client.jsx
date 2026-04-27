@@ -1,4 +1,4 @@
-// ── Supabase client ──────────────────────────────────────────
+// -- Supabase client ------------------------------------------
 // Loaded before all other JSX files in index.html
 
 const SUPABASE_URL  = 'https://tddegqxozgdnottitzeq.supabase.co';
@@ -7,7 +7,7 @@ const SUPABASE_KEY  = 'sb_publishable_svk_tc3SIHy7e5yL2n3gYA_cH9yTvPg';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 window.sb = sb;
 
-// ── Profile helpers ───────────────────────────────────────────
+// -- Profile helpers -------------------------------------------
 
 const SupaProfiles = {
   // Upsert profile when user logs in
@@ -32,7 +32,7 @@ const SupaProfiles = {
   },
 };
 
-// ── Entry helpers ─────────────────────────────────────────────
+// -- Entry helpers ---------------------------------------------
 
 const SupaEntries = {
   // Load entries for a user on a given date (YYYY-MM-DD)
@@ -248,7 +248,7 @@ const SupaEntries = {
   },
 };
 
-// ── Password helpers (stored in profiles.password column) ───
+// -- Password helpers (stored in profiles.password column) ---
 const SupaPasswords = {
   async update(userId, newPassword) {
     const { error } = await sb.from('profiles').update({ password: newPassword }).eq('id', userId);
@@ -266,7 +266,7 @@ window.SupaProfiles  = SupaProfiles;
 window.SupaEntries   = SupaEntries;
 window.SupaPasswords = SupaPasswords;
 
-// ── Notifications ──────────────────────────────────────────────
+// -- Notifications ----------------------------------------------
 const SupaNotifications = {
   async getForUser(userId) {
     const { data, error } = await sb
@@ -297,7 +297,7 @@ const SupaNotifications = {
 
 window.SupaNotifications = SupaNotifications;
 
-// ── App Usage (Desktop Agent) ──────────────────────────────────
+// -- App Usage (Desktop Agent) ----------------------------------
 const SupaAppUsage = {
   async forDay(userId, date) {
     const { data, error } = await sb
