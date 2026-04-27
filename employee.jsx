@@ -209,7 +209,7 @@ function TodayEntries({ entries, setEntries, userId }) {
 }
 
 function WeeklyGrid({ user }) {
-  // ── Week date helpers ──────────────────────────────────────
+  // -- Week date helpers --------------------------------------
   const getWeekDates = (offset = 0) => {
     const d = new Date();
     d.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1) + offset * 7);
@@ -231,7 +231,7 @@ function WeeklyGrid({ user }) {
     return `Week of ${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })} – ${e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`;
   };
 
-  // ── State ──────────────────────────────────────────────────
+  // -- State --------------------------------------------------
   const [weekOffset, setWeekOffset] = useStateEmp(0);
   const [grid, setGrid] = useStateEmp([]); // [{project, projectName, client, hours:[0,0,0,0,0]}]
   const [loading, setLoading] = useStateEmp(true);
@@ -243,7 +243,7 @@ function WeeklyGrid({ user }) {
   const today = new Date().toISOString().split('T')[0];
   const isCurrentWeek = weekOffset === 0;
 
-  // ── Load week entries from Supabase ────────────────────────
+  // -- Load week entries from Supabase ------------------------
   useEffectEmp(() => {
     if (!user?.id) return;
     setLoading(true);
@@ -286,7 +286,7 @@ function WeeklyGrid({ user }) {
     });
   }, [user?.id, weekOffset]);
 
-  // ── Cell update ────────────────────────────────────────────
+  // -- Cell update --------------------------------------------
   const updateCell = async (ri, ci, v) => {
     const val = parseFloat(v) || 0;
     const copy = grid.map(r => ({ ...r, hours: [...r.hours] }));
@@ -301,7 +301,7 @@ function WeeklyGrid({ user }) {
     setSaving(false);
   };
 
-  // ── Submit week ────────────────────────────────────────────
+  // -- Submit week --------------------------------------------
   const submitWeek = async () => {
     if (submitting) return;
     setSubmitting(true);
@@ -324,7 +324,7 @@ function WeeklyGrid({ user }) {
     setSubmitting(false);
   };
 
-  // ── Totals ─────────────────────────────────────────────────
+  // -- Totals -------------------------------------------------
   const rowTotal = (r) => r.hours.reduce((s, x) => s + x, 0);
   const colTotal = (ci) => grid.reduce((s, r) => s + r.hours[ci], 0);
   const grand = grid.reduce((s, r) => s + rowTotal(r), 0);
