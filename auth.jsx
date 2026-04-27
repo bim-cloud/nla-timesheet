@@ -48,8 +48,21 @@ const Auth = {
     }
     const id = u.username.toLowerCase().replace(/[^a-z0-9]/g, '');
     const initials = u.name.split(/\s+/).map(s => s[0]).join('').slice(0,2).toUpperCase();
-    users.push({ ...u, id, initials });
+    const newUser = { ...u, id, initials };
+    users.push(newUser);
     Auth.saveUsers(users);
+    // Sync to Supabase immediately
+    if (window.SupaProfiles) {
+      window.SupaProfiles.upsert({
+        id, username: u.username, name: u.name,
+        role: u.role || '', type: u.type || 'employee',
+        initials, tz: u.tz || 'Asia/Dubai', tzLabel: u.tzLabel || 'UAE',
+      });
+      // Also sync password
+      if (window.SupaPasswords && u.password) {
+        window.SupaPasswords.update(id, u.password);
+      }
+    }
     return { ok: true };
   },
   updatePassword(id, newPassword) {
@@ -58,13 +71,24 @@ const Auth = {
     if (!u) return { ok: false };
     u.password = newPassword;
     Auth.saveUsers(users);
-    // Sync to Supabase in background
-    if (window.SupaPasswords) window.SupaPasswords.update(id, newPassword);
+    // Sync to Supabase — profiles table password column
+    if (window.sb) {
+      window.sb.from('profiles').update({ password: newPassword }).eq('id', id).then(({ error }) => {
+        if (error) console.warn('Supabase updatePassword error:', error.message);
+        else console.log('Password synced to Supabase for:', id);
+      });
+    }
     return { ok: true };
   },
   removeUser(id) {
     const users = Auth.getUsers().filter(x => x.id !== id);
     Auth.saveUsers(users);
+    // Remove from Supabase
+    if (window.sb) {
+      window.sb.from('profiles').delete().eq('id', id).then(({ error }) => {
+        if (error) console.warn('Supabase removeUser error:', error.message);
+      });
+    }
   },
   updateUser(id, patch) {
     const users = Auth.getUsers();
@@ -124,17 +148,23 @@ function LoginScreen({ onLogin }) {
 
     Auth.addReset(username.trim());
 
-    // Notify manager via email
+    // Notify manager via EmailJS (browser-based, no server needed)
     try {
-      await window.sb.functions.invoke('notify-password-reset', {
-        body: {
-          employeeName: u.name,
-          username: u.username,
-          requestedAt: new Date().toISOString(),
-        },
-      });
-    } catch(e) {
-      console.warn('Reset email notification failed (non-critical):', e);
+      const EMAILJS_SERVICE  = window.NLA_EMAILJS_SERVICE  || '';
+      const EMAILJS_TEMPLATE = window.NLA_EMAILJS_TEMPLATE || '';
+      const EMAILJS_KEY      = window.NLA_EMAILJS_KEY      || '';
+      if (EMAILJS_SERVICE && EMAILJS_TEMPLATE && EMAILJS_KEY) {
+        await window.emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE, {
+          to_email:      'sanil@naturelandscapearchitects.com',
+          to_name:       'Sanil',
+          employee_name: u.name,
+          username:      u.username,
+          request_time:  new Date().toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' UAE',
+          dashboard_url: 'https://nla-timesheet-5jc7.vercel.app',
+        }, EMAILJS_KEY);
+      }
+    } catch(err) {
+      console.warn('Email notification failed:', err);
     }
 
     setSuccess('Reset request sent. Sanil will be notified and will share your new password shortly.');
