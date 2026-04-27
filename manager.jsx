@@ -416,6 +416,7 @@ function Approvals() {
   const [submissions, setSubmissions] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [acting, setActing] = React.useState(null);
+  const [reviewing, setReviewing] = React.useState(null);
 
   const load = () => {
     window.SupaEntries.getPendingSubmissions().then(rows => {
@@ -507,6 +508,10 @@ function Approvals() {
               </p>
             </div>
             <div className="req-actions">
+              <button className="btn btn-sm" disabled={!!acting}
+                onClick={() => setReviewing(sub)}>
+                <Icon name="eye" size={14}/> Review
+              </button>
               <button
                 className="btn btn-sm"
                 disabled={!!acting}
@@ -526,6 +531,150 @@ function Approvals() {
           </div>
         );
       })}
+    {reviewing && (
+      <ReviewModal
+        sub={reviewing}
+        onClose={() => setReviewing(null)}
+        onApprove={() => approve(reviewing)}
+        onReject={() => reject(reviewing)}
+      />
+    )}
+    </div>
+  );
+}
+
+// ── Timesheet Review Modal ─────────────────────────────────────
+function ReviewModal({ sub, onClose, onApprove, onReject }) {
+  const [entries, setEntries] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [comment, setComment] = React.useState('');
+  const [sending, setSending] = React.useState(false);
+  const [sent, setSent] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!sub) return;
+    // Load all entries for this employee's week
+    const today = new Date().toISOString().split('T')[0];
+    const friday = new Date(sub.monday + 'T00:00:00');
+    friday.setDate(friday.getDate() + 4);
+    const fridayStr = friday.toISOString().split('T')[0];
+    window.SupaEntries.teamSummary(sub.monday, fridayStr).then(all => {
+      setEntries(all.filter(e => e.user_id === sub.userId));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [sub?.key]);
+
+  if (!sub) return null;
+  const p = sub.profile;
+  const initials = p?.initials || (p?.name||'?')[0].toUpperCase();
+
+  const fmtDay = (d) => new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+
+  // Group by date
+  const byDate = {};
+  entries.forEach(e => {
+    if (!byDate[e.date]) byDate[e.date] = [];
+    byDate[e.date].push(e);
+  });
+
+  const total = entries.reduce((s,e) => s+parseFloat(e.hours), 0);
+
+  const sendComment = async () => {
+    if (!comment.trim()) return;
+    setSending(true);
+    // Save comment as notification to employee
+    if (window.SupaNotifications) {
+      await window.SupaNotifications.create(
+        sub.userId, 'info',
+        'Manager comment on your timesheet',
+        comment.trim()
+      );
+    }
+    setSent(true);
+    setSending(false);
+    setComment('');
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={e=>e.stopPropagation()} style={{maxWidth:560,maxHeight:'85vh',display:'flex',flexDirection:'column'}}>
+        {/* Header */}
+        <div style={{padding:'18px 24px 14px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:12,justifyContent:'space-between'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <div className="avatar">{initials}</div>
+              <div>
+                <h3 style={{margin:0,fontSize:15}}>{p?.name || sub.userId}</h3>
+                <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>
+                  Week of {new Date(sub.monday+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}
+                  {' · '}{total.toFixed(1)}h total
+                </div>
+              </div>
+            </div>
+            <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--text-muted)'}}>×</button>
+          </div>
+        </div>
+
+        {/* Daily breakdown */}
+        <div style={{overflowY:'auto',flex:1,padding:'16px 24px'}}>
+          {loading ? (
+            <div style={{textAlign:'center',color:'var(--text-muted)',fontSize:13,padding:'20px'}}>Loading entries…</div>
+          ) : Object.keys(byDate).sort().map(date => (
+            <div key={date} style={{marginBottom:16}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                <span style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{fmtDay(date)}</span>
+                <span style={{fontSize:12,fontWeight:700,color:'var(--accent)',fontFamily:'var(--font-mono)'}}>
+                  {byDate[date].reduce((s,e)=>s+parseFloat(e.hours),0).toFixed(1)}h
+                </span>
+              </div>
+              {byDate[date].map(e => (
+                <div key={e.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 10px',
+                  background:'var(--surface-muted)',borderRadius:6,marginBottom:4,fontSize:12}}>
+                  <div>
+                    <span style={{fontWeight:500,color:'var(--text)'}}>{e.project_name||e.project_id}</span>
+                    {e.title && e.title !== 'Weekly timesheet — '+e.project_name && (
+                      <span style={{color:'var(--text-muted)',marginLeft:6}}>· {e.title}</span>
+                    )}
+                  </div>
+                  <span style={{fontFamily:'var(--font-mono)',fontWeight:600,color:'var(--text)'}}>{parseFloat(e.hours).toFixed(1)}h</span>
+                </div>
+              ))}
+            </div>
+          ))}
+
+          {/* Comment box */}
+          <div style={{borderTop:'1px solid var(--border)',paddingTop:16,marginTop:8}}>
+            <label style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--text-muted)',display:'block',marginBottom:6}}>
+              Send comment to employee
+            </label>
+            {sent && <div style={{fontSize:12,color:'#1d8a4a',marginBottom:8}}>✓ Comment sent as notification</div>}
+            <textarea
+              value={comment}
+              onChange={e=>setComment(e.target.value)}
+              placeholder="e.g. Please split project hours more accurately…"
+              style={{width:'100%',height:70,border:'1px solid var(--border)',borderRadius:7,padding:'8px 10px',
+                fontFamily:'var(--font-sans)',fontSize:13,resize:'vertical',outline:'none',
+                background:'var(--surface)',color:'var(--text)'}}
+            />
+            <button className="btn btn-sm" onClick={sendComment} disabled={!comment.trim()||sending}
+              style={{marginTop:6}}>
+              {sending ? 'Sending…' : 'Send comment'}
+            </button>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{padding:'14px 24px',borderTop:'1px solid var(--border)',display:'flex',gap:8,justifyContent:'flex-end',flexShrink:0}}>
+          <button className="btn" onClick={onClose}>Close</button>
+          <button className="btn btn-sm" onClick={() => { onReject(); onClose(); }}
+            style={{color:'var(--red,#c0392b)'}}>
+            <Icon name="x" size={13}/> Reject
+          </button>
+          <button className="btn btn-sm btn-primary" onClick={() => { onApprove(); onClose(); }}>
+            <Icon name="check" size={13}/> Approve
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -533,16 +682,39 @@ function Approvals() {
 function ProjectHours() {
   const [totals, setTotals] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
+  const [view, setView] = React.useState('week');
+  const [offset, setOffset] = React.useState(0);
   const projById = (id) => window.DATA.PROJECTS.find(p => p.id === id);
 
-  React.useEffect(() => {
-    const getMonday = () => {
+  const getRange = React.useCallback(() => {
+    if (view === 'week') {
       const d = new Date(); const day = d.getDay();
-      d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
-      return d.toISOString().split('T')[0];
-    };
-    const today = new Date().toISOString().split('T')[0];
-    window.SupaEntries.teamSummary(getMonday(), today).then(rows => {
+      d.setDate(d.getDate() - day + (day === 0 ? -6 : 1) + offset * 7);
+      const from = d.toISOString().split('T')[0];
+      const fri = new Date(d); fri.setDate(d.getDate() + 4);
+      return { from, to: fri.toISOString().split('T')[0] };
+    } else {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + offset);
+      const from = d.toISOString().split('T')[0];
+      const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      return { from, to: last.toISOString().split('T')[0] };
+    }
+  }, [view, offset]);
+
+  const fmtRangeLabel = () => {
+    const { from, to } = getRange();
+    const s = new Date(from + 'T00:00:00');
+    if (view === 'week') {
+      const e = new Date(to + 'T00:00:00');
+      return s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' – ' + e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    return s.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  };
+
+  React.useEffect(() => {
+    setLoading(true);
+    const { from, to } = getRange();
+    window.SupaEntries.teamSummary(from, to).then(rows => {
       const byProject = {};
       rows.forEach(e => {
         if (!byProject[e.project_id]) byProject[e.project_id] = { hours: 0, users: new Set() };
@@ -555,20 +727,37 @@ function ProjectHours() {
       setTotals(result);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  }, [view, offset]);
 
   return (
     <div className="card">
-      <div className="card-header">
+      <div className="card-header" style={{flexWrap:'wrap',gap:6}}>
         <div>
-          <h3 className="card-title">Project hours · this week</h3>
-          <div className="card-sub">Real data from Supabase</div>
+          <h3 className="card-title">Project hours · {fmtRangeLabel()}</h3>
+          <div className="card-sub">{loading ? 'Loading…' : `${totals.length} active projects`}</div>
+        </div>
+        <div style={{display:'flex',gap:4,alignItems:'center'}}>
+          <div style={{display:'flex',background:'var(--surface-muted)',borderRadius:7,padding:2,gap:2}}>
+            {[['week','Week'],['month','Month']].map(([id,lbl]) => (
+              <button key={id} onClick={() => { setView(id); setOffset(0); }}
+                style={{padding:'3px 10px',borderRadius:5,border:'none',cursor:'pointer',fontSize:11,
+                  background: view===id?'white':'transparent', fontWeight: view===id?600:400,
+                  color: view===id?'var(--text)':'var(--text-muted)',
+                  boxShadow: view===id?'0 0 0 0.5px var(--border)':'none'
+                }}>{lbl}</button>
+            ))}
+          </div>
+          <button className="btn btn-sm" onClick={() => setOffset(o=>o-1)}>←</button>
+          <button className="btn btn-sm" style={{fontSize:11}} onClick={() => setOffset(0)}>
+            {view==='week'?'This week':'This month'}
+          </button>
+          <button className="btn btn-sm" disabled={offset>=0} onClick={() => setOffset(o=>o+1)}>→</button>
         </div>
       </div>
       {loading ? (
         <div style={{padding: '16px', color: 'var(--text-muted)', fontSize: 13}}>Loading…</div>
       ) : totals.length === 0 ? (
-        <div style={{padding: '16px', color: 'var(--text-muted)', fontSize: 13}}>No hours logged this week yet.</div>
+        <div style={{padding: '16px', color: 'var(--text-muted)', fontSize: 13}}>No hours logged this period.</div>
       ) : totals.map(pt => {
         const p = projById(pt.id);
         const budget = p ? 80 : 40;
@@ -595,20 +784,30 @@ function WeekTotalsBars() {
   const [values, setValues] = React.useState([0,0,0,0,0]);
   const [dates, setDates] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
+  const [weekOffset, setWeekOffset] = React.useState(0);
   const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri'];
 
-  React.useEffect(() => {
-    const d = new Date();
-    const day = d.getDay();
-    const monday = new Date(d);
-    monday.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
-    const weekDates = Array.from({length: 5}, (_, i) => {
-      const x = new Date(monday); x.setDate(monday.getDate() + i);
+  const getWeekDates = React.useCallback((offset) => {
+    const d = new Date(); const day = d.getDay();
+    d.setDate(d.getDate() - day + (day === 0 ? -6 : 1) + offset * 7);
+    return Array.from({length: 5}, (_, i) => {
+      const x = new Date(d); x.setDate(d.getDate() + i);
       return x.toISOString().split('T')[0];
     });
+  }, []);
+
+  const fmtWeekLabel = (dates) => {
+    const s = new Date(dates[0] + 'T00:00:00');
+    const e = new Date(dates[4] + 'T00:00:00');
+    return s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' – ' +
+           e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  React.useEffect(() => {
+    const weekDates = getWeekDates(weekOffset);
     setDates(weekDates);
-    const today = new Date().toISOString().split('T')[0];
-    window.SupaEntries.teamSummary(weekDates[0], today).then(rows => {
+    setLoading(true);
+    window.SupaEntries.teamSummary(weekDates[0], weekDates[4]).then(rows => {
       const byDay = [0,0,0,0,0];
       rows.forEach(e => {
         const idx = weekDates.indexOf(e.date);
@@ -617,22 +816,29 @@ function WeekTotalsBars() {
       setValues(byDay);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  }, [weekOffset]);
 
   const max = Math.max(...values, 10);
   const today = new Date().toISOString().split('T')[0];
 
   return (
     <div className="card">
-      <div className="card-header">
+      <div className="card-header" style={{flexWrap:'wrap',gap:6}}>
         <div>
-          <h3 className="card-title">Team hours this week</h3>
+          <h3 className="card-title">Team hours · {dates.length ? fmtWeekLabel(dates) : '…'}</h3>
           <div className="card-sub">Daily totals · all employees</div>
+        </div>
+        <div style={{display:'flex',gap:4}}>
+          <button className="btn btn-sm" onClick={() => setWeekOffset(w=>w-1)}>←</button>
+          <button className="btn btn-sm" style={{fontSize:11}} onClick={() => setWeekOffset(0)} disabled={weekOffset===0}>
+            This week
+          </button>
+          <button className="btn btn-sm" disabled={weekOffset>=0} onClick={() => setWeekOffset(w=>w+1)}>→</button>
         </div>
       </div>
       <div className="day-bars" style={{height: 120}}>
         {DAY_LABELS.map((d, i) => {
-          const isToday = dates[i] === today;
+          const isToday = dates[i] === today && weekOffset === 0;
           return (
             <div key={d} className="day-bar">
               <div className="bar" style={{height: '100%', position: 'relative'}}>
@@ -643,7 +849,8 @@ function WeekTotalsBars() {
                 }}/>
                 <div style={{
                   position: 'absolute', top: -18, left: 0, right: 0, textAlign: 'center',
-                  fontSize: 10.5, fontFamily: 'var(--font-mono)', color: isToday ? 'var(--accent)' : 'var(--text-muted)',
+                  fontSize: 10.5, fontFamily: 'var(--font-mono)',
+                  color: isToday ? 'var(--accent)' : 'var(--text-muted)',
                   fontWeight: isToday ? 600 : 400,
                 }}>{values[i] > 0 ? values[i].toFixed(1) + 'h' : '—'}</div>
               </div>
@@ -656,14 +863,6 @@ function WeekTotalsBars() {
   );
 }
 
-const APP_META = {
-  revit:   { name: 'Revit',          color: '#3fb6e6', badge: 'R' },
-  acad:    { name: 'AutoCAD',        color: '#e8554e', badge: 'A' },
-  sketch:  { name: 'SketchUp',       color: '#f9a03f', badge: 'S' },
-  teams:   { name: 'Teams',          color: '#6c7dd5', badge: 'T' },
-  outlook: { name: 'Outlook',        color: '#4a90d9', badge: 'O' },
-  pdf:     { name: 'PDF / Bluebeam', color: '#9a6fe0', badge: 'P' },
-};
 
 function AppUsageDonut({ slices, total, studioUtil }) {
   const [hovered, setHovered] = React.useState(null);
@@ -1034,17 +1233,7 @@ function ManagerView({ activeNav }) {
               <button
                 className="btn btn-primary"
                 style={{display:'flex',alignItems:'center',gap:8,padding:'10px 20px'}}
-                onClick={() => window.exportTeamExcel && window.exportTeamExcel()}
-              >
-                <Icon name="download" size={15}/> Export Team Excel
-              </button>
-              <button
-                className="btn"
-                style={{display:'flex',alignItems:'center',gap:8,padding:'10px 20px',color:'#102347',borderColor:'#102347'}}
-                onClick={() => window.exportTeamPDF && window.exportTeamPDF()}
-              >
-                <Icon name="download" size={15}/> Export Team PDF
-              </button>
+                <window.TeamExportButtons />
             </div>
             <div style={{marginTop:24,paddingTop:20,borderTop:'1px solid var(--border)'}}>
               <div className="card-sub" style={{marginBottom:12}}>Team summary · this week</div>
