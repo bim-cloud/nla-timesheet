@@ -1,4 +1,4 @@
-// ── NLA Export Module ─────────────────────────────────────────────────────────
+// -- NLA Export Module ---------------------------------------------------------
 // Professional Excel + PDF exports with NLA branding
 // Logo: 817x178px (4.59:1 ratio). At 10mm tall = 45.9mm wide
 
@@ -10,7 +10,7 @@ const NLA_WHITE  = [255, 255, 255];
 const LOGO_W     = 45.9;  // mm — correct for 817x178 logo at 10mm tall
 const LOGO_H     = 10;    // mm
 
-// ── Date helpers ──────────────────────────────────────────────────────────────
+// -- Date helpers --------------------------------------------------------------
 function getWeekDates(offset) {
   offset = offset || 0;
   const d = new Date();
@@ -43,7 +43,7 @@ function fmtWeekLabel(dates) {
          e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-// ── PDF header band helper ─────────────────────────────────────────────────────
+// -- PDF header band helper -----------------------------------------------------
 function pdfHeader(doc, PW, title, subtitle, showLogo) {
   // Navy band
   doc.setFillColor(NLA_NAVY[0], NLA_NAVY[1], NLA_NAVY[2]);
@@ -97,7 +97,7 @@ function pdfInfoBar(doc, PW, items, yStart) {
   });
 }
 
-// ── EXPORT DIALOG STATE ────────────────────────────────────────────────────────
+// -- EXPORT DIALOG STATE --------------------------------------------------------
 window._exportOptions = {
   includeSummary:   true,
   includeDailyGrid: true,
@@ -106,7 +106,8 @@ window._exportOptions = {
   includeStatus:    true,
 };
 
-// ── Export Options Dialog ──────────────────────────────────────────────────────
+// -- Export Options Dialog ------------------------------------------------------
+// Export Options Dialog
 function ExportOptionsDialog({ open, onClose, onExport, type }) {
   const [opts, setOpts] = React.useState(Object.assign({}, window._exportOptions));
   if (!open) return null;
@@ -162,7 +163,7 @@ function ExportOptionsDialog({ open, onClose, onExport, type }) {
   );
 }
 
-// ── EMPLOYEE EXCEL EXPORT ──────────────────────────────────────────────────────
+// -- EMPLOYEE EXCEL EXPORT ------------------------------------------------------
 async function exportToExcel(user, weekOffset, opts) {
   opts = opts || window._exportOptions;
   weekOffset = weekOffset || 0;
@@ -251,7 +252,7 @@ async function exportToExcel(user, weekOffset, opts) {
   XLSX.writeFile(wb, 'NLA_Timesheet_' + user.name.replace(/\s+/g,'_') + '_' + dates[0] + '.xlsx');
 }
 
-// ── EMPLOYEE PDF EXPORT ────────────────────────────────────────────────────────
+// -- EMPLOYEE PDF EXPORT --------------------------------------------------------
 async function exportToPDF(user, weekOffset, opts) {
   opts = opts || window._exportOptions;
   weekOffset = weekOffset || 0;
@@ -388,7 +389,7 @@ async function exportToPDF(user, weekOffset, opts) {
   doc.save('NLA_Timesheet_' + user.name.replace(/\s+/g,'_') + '_' + dates[0] + '.pdf');
 }
 
-// ── EXPORT BUTTONS COMPONENT ───────────────────────────────────────────────────
+// -- EXPORT BUTTONS COMPONENT ---------------------------------------------------
 function ExportButtons({ user, weekOffset, size }) {
   weekOffset = weekOffset || 0;
   size = size || 'sm';
@@ -432,7 +433,7 @@ function ExportButtons({ user, weekOffset, size }) {
   );
 }
 
-// ── TEAM EXCEL EXPORT ──────────────────────────────────────────────────────────
+// -- TEAM EXCEL EXPORT ----------------------------------------------------------
 async function exportTeamExcel(opts) {
   opts = opts || window._exportOptions;
   const XLSX = window.XLSX;
@@ -491,7 +492,7 @@ async function exportTeamExcel(opts) {
   XLSX.writeFile(wb, 'NLA_Team_Timesheet_' + dates[0] + '.xlsx');
 }
 
-// ── TEAM PDF EXPORT ────────────────────────────────────────────────────────────
+// -- TEAM PDF EXPORT ------------------------------------------------------------
 async function exportTeamPDF(opts) {
   opts = opts || window._exportOptions;
   const jsPDF = window.jspdf.jsPDF;
@@ -587,7 +588,7 @@ async function exportTeamPDF(opts) {
   doc.save('NLA_Team_Timesheet_' + dates[0] + '.pdf');
 }
 
-// ── TEAM EXPORT DIALOG ─────────────────────────────────────────────────────────
+// -- TEAM EXPORT DIALOG ---------------------------------------------------------
 function TeamExportButtons() {
   const [exporting, setExporting] = React.useState(null);
   const [dialog, setDialog] = React.useState(null);
