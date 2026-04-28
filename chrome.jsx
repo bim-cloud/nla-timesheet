@@ -48,7 +48,7 @@ function Sidebar({ view, activeNav, setActiveNav, user, onSettings, onNotificati
       </button>
 
       <div className="sidebar-user">
-        <div className="avatar">{user?.initials || '—'}</div>
+        <div className="avatar">{user?.initials || ' '}</div>
         <div>
           <div className="who">{user?.name || ''}</div>
           <div className="role">{user?.role || ''}</div>
