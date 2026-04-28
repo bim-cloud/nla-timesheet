@@ -7,7 +7,7 @@ const NLA_NAVY   = [16, 35, 71];
 const NLA_GOLD   = [201, 168, 76];
 const NLA_LIGHT  = [232, 237, 244];
 const NLA_WHITE  = [255, 255, 255];
-const LOGO_W     = 45.9;  // mm — correct for 817x178 logo at 10mm tall
+const LOGO_W     = 45.9;  // mm   correct for 817x178 logo at 10mm tall
 const LOGO_H     = 10;    // mm
 
 // -- Date helpers --------------------------------------------------------------
@@ -39,7 +39,7 @@ function fmtDate(iso) {
 function fmtWeekLabel(dates) {
   const s = new Date(dates[0] + 'T00:00:00');
   const e = new Date(dates[4] + 'T00:00:00');
-  return s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) + ' – ' +
+  return s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) + '   ' +
          e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
@@ -73,7 +73,7 @@ function pdfFooter(doc, PW, PH, pageNum, pageCount) {
   doc.setTextColor(160, 180, 210);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
-  doc.text('Nature Landscape Architects  ·  Confidential  ·  Internal Use Only', 8, PH - 4);
+  doc.text('Nature Landscape Architects     Confidential     Internal Use Only', 8, PH - 4);
   doc.setTextColor(NLA_GOLD[0], NLA_GOLD[1], NLA_GOLD[2]);
   doc.text('NLA Timesheet', PW / 2, PH - 4, { align: 'center' });
   doc.setTextColor(160, 180, 210);
@@ -199,7 +199,7 @@ async function exportToExcel(user, weekOffset, opts) {
     wsData.push(['Nature Landscape Architects', '', '', '', '', '', '']);
     wsData.push(['Weekly Timesheet', '', '', '', '', '', '']);
     wsData.push(['']);
-    wsData.push(['Employee:', user.name, '', 'Role:', user.role || '—', '', '']);
+    wsData.push(['Employee:', user.name, '', 'Role:', user.role || ' ', '', '']);
     wsData.push(['Week:', weekLabel, '', 'Generated:', fmtDate(today), '', '']);
     if (opts.includeStatus) {
       wsData.push(['Status:', isSubmitted ? 'Submitted' : 'Draft', '', '', '', '', '']);
@@ -232,7 +232,7 @@ async function exportToExcel(user, weekOffset, opts) {
   if (opts.includeDailyGrid) {
     const rawEntries = entries.slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
     const ws2Data = [
-      ['Nature Landscape Architects — Daily Entries'],
+      ['Nature Landscape Architects   Daily Entries'],
       ['Employee: ' + user.name + '  |  Week: ' + weekLabel],
       [''],
     ];
@@ -285,7 +285,7 @@ async function exportToPDF(user, weekOffset, opts) {
   const PW = doc.internal.pageSize.getWidth();
   const PH = doc.internal.pageSize.getHeight();
 
-  // Page 1 — Header
+  // Page 1   Header
   pdfHeader(doc, PW, 'Weekly Timesheet Report', weekLabel);
 
   // Status badge
@@ -301,7 +301,7 @@ async function exportToPDF(user, weekOffset, opts) {
   if (opts.includeSummary) {
     const infoItems = [
       ['Employee', user.name],
-      ['Role', user.role || '—'],
+      ['Role', user.role || ' '],
       ['Week', weekLabel],
       ['Total Hours', grand.toFixed(2) + 'h'],
       ['Generated', fmtDate(today)],
@@ -318,11 +318,11 @@ async function exportToPDF(user, weekOffset, opts) {
 
     const tableHead = [['Project'].concat(dayLabels).concat(['Total'])];
     const tableBody = projects.map(function(p) {
-      return [p.name].concat(p.hours.map(function(h){ return h > 0 ? h.toFixed(2) : '—'; })).concat([
-        p.hours.reduce(function(a,b){return a+b;},0) > 0 ? p.hours.reduce(function(a,b){return a+b;},0).toFixed(2) : '—'
+      return [p.name].concat(p.hours.map(function(h){ return h > 0 ? h.toFixed(2) : ' '; })).concat([
+        p.hours.reduce(function(a,b){return a+b;},0) > 0 ? p.hours.reduce(function(a,b){return a+b;},0).toFixed(2) : ' '
       ]);
     });
-    tableBody.push(['DAILY TOTAL'].concat(colTotals.map(function(h){ return h>0?h.toFixed(2):'—'; })).concat([grand>0?grand.toFixed(2):'—']));
+    tableBody.push(['DAILY TOTAL'].concat(colTotals.map(function(h){ return h>0?h.toFixed(2):' '; })).concat([grand>0?grand.toFixed(2):' ']));
 
     doc.autoTable({
       head: tableHead, body: tableBody, startY: opts.includeSummary ? 48 : 34,
@@ -341,17 +341,17 @@ async function exportToPDF(user, weekOffset, opts) {
     });
   }
 
-  // Page 2 — Daily entries
+  // Page 2   Daily entries
   if (opts.includeDailyGrid) {
     doc.addPage();
-    pdfHeader(doc, PW, 'Daily Time Entries', user.name + '  ·  ' + weekLabel);
+    pdfHeader(doc, PW, 'Daily Time Entries', user.name + '     ' + weekLabel);
 
     const sorted = entries.slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
     const headers = [['Date', 'Project', 'Task / Description', 'Type', 'Hours']];
     if (opts.includeStatus) headers[0].push('Status');
 
     const entriesBody = sorted.map(function(e) {
-      const row = [fmtDate(e.date), e.project_name || e.project_id, e.title, e.task_type === 'grid' ? 'Timesheet' : (e.task_type || '—'), parseFloat(e.hours).toFixed(2)];
+      const row = [fmtDate(e.date), e.project_name || e.project_id, e.title, e.task_type === 'grid' ? 'Timesheet' : (e.task_type || ' '), parseFloat(e.hours).toFixed(2)];
       if (opts.includeStatus) row.push(e.status.charAt(0).toUpperCase() + e.status.slice(1));
       return row;
     });
@@ -410,12 +410,12 @@ function ExportButtons({ user, weekOffset, size }) {
       <button className={'btn btn-' + size} onClick={() => setDialog('excel')} disabled={!!exporting}
         style={{display:'flex',alignItems:'center',gap:5}}>
         <Icon name="download" size={13}/>
-        {exporting === 'excel' ? 'Exporting…' : 'Excel'}
+        {exporting === 'excel' ? 'Exporting ' : 'Excel'}
       </button>
       <button className={'btn btn-' + size} onClick={() => setDialog('pdf')} disabled={!!exporting}
         style={{display:'flex',alignItems:'center',gap:5,color:'#102347',borderColor:'#102347'}}>
         <Icon name="download" size={13}/>
-        {exporting === 'pdf' ? 'Exporting…' : 'PDF'}
+        {exporting === 'pdf' ? 'Exporting ' : 'PDF'}
       </button>
       <ExportOptionsDialog
         open={dialog === 'excel'}
@@ -455,7 +455,7 @@ async function exportTeamExcel(opts) {
   const summaryData = [];
 
   if (opts.includeSummary) {
-    summaryData.push(['Nature Landscape Architects — Team Timesheet Summary']);
+    summaryData.push(['Nature Landscape Architects   Team Timesheet Summary']);
     summaryData.push(['Week: ' + weekLabel + '  |  Generated: ' + fmtDate(today)]);
     summaryData.push(['']);
   }
@@ -542,7 +542,7 @@ async function exportTeamPDF(opts) {
       if (di >= 0) byDay[di] += parseFloat(e.hours);
     });
     const total = byDay.reduce(function(a,b){return a+b;},0);
-    const row = [emp.name, emp.role].concat(byDay.map(function(h){return h>0?h.toFixed(1):'—';})).concat([total>0?total.toFixed(1):'—']);
+    const row = [emp.name, emp.role].concat(byDay.map(function(h){return h>0?h.toFixed(1):' ';})).concat([total>0?total.toFixed(1):' ']);
     if (opts.includeUtil) row.push(total>0?(((total/45)*100).toFixed(0)+'%'):'0%');
     if (opts.includeStatus) {
       const hasSubmit = empEntries.some(function(e){return e.status==='submitted';});
@@ -606,11 +606,11 @@ function TeamExportButtons() {
     <>
       <button className="btn btn-sm" onClick={() => setDialog('excel')} disabled={!!exporting}
         style={{display:'flex',alignItems:'center',gap:4}}>
-        <Icon name="download" size={12}/> {exporting === 'excel' ? 'Exporting…' : 'Excel'}
+        <Icon name="download" size={12}/> {exporting === 'excel' ? 'Exporting ' : 'Excel'}
       </button>
       <button className="btn btn-sm" onClick={() => setDialog('pdf')} disabled={!!exporting}
         style={{display:'flex',alignItems:'center',gap:4,color:'#102347',borderColor:'#102347'}}>
-        <Icon name="download" size={12}/> {exporting === 'pdf' ? 'Exporting…' : 'PDF'}
+        <Icon name="download" size={12}/> {exporting === 'pdf' ? 'Exporting ' : 'PDF'}
       </button>
       <ExportOptionsDialog open={dialog==='excel'} type="excel" onClose={() => setDialog(null)} onExport={(opts) => doExport('excel', opts)}/>
       <ExportOptionsDialog open={dialog==='pdf'} type="pdf" onClose={() => setDialog(null)} onExport={(opts) => doExport('pdf', opts)}/>
