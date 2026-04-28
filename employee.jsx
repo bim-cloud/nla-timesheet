@@ -1,3 +1,4 @@
+const Icon = window.Icon;
 const { useState: useStateEmp, useEffect: useEffectEmp, useMemo: useMemoEmp } = React;
 
 function ClockCard({ clockState, setClockState, activity, user }) {
