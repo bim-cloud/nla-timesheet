@@ -36,8 +36,8 @@ function TeamOverviewTable() {
     const e = new Date(to + 'T00:00:00');
     if (view === 'week') {
       const isThisWeek = weekOffset === 0;
-      const prefix = isThisWeek ? 'This week · ' : weekOffset === -1 ? 'Last week · ' : '';
-      return prefix + s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' – ' +
+      const prefix = isThisWeek ? 'This week   ' : weekOffset === -1 ? 'Last week   ' : '';
+      return prefix + s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + '   ' +
              e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     } else {
       return s.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -72,7 +72,7 @@ function TeamOverviewTable() {
         });
         const submittedCount = empEntries.filter(e => e.status === 'submitted').length;
         const approvedCount  = empEntries.filter(e => e.status === 'approved').length;
-        const lastProject = empEntries.length > 0 ? (empEntries[empEntries.length-1].project_name || empEntries[empEntries.length-1].project_id) : '—';
+        const lastProject = empEntries.length > 0 ? (empEntries[empEntries.length-1].project_name || empEntries[empEntries.length-1].project_id) : ' ';
         const target = view === 'week' ? 45 : 45 * 4;
         const util = target > 0 ? Math.round((totalHours / target) * 100) : 0;
 
@@ -105,9 +105,9 @@ function TeamOverviewTable() {
       {/* -- Header ------------------------------------------- */}
       <div className="card-header" style={{flexWrap:'wrap',gap:10}}>
         <div>
-          <h3 className="card-title">Team timesheet · {fmtRangeLabel()}</h3>
+          <h3 className="card-title">Team timesheet   {fmtRangeLabel()}</h3>
           <div className="card-sub">
-            {loading ? 'Loading…' : `${activeCount} of ${teamData.length} employees logged hours · ${totalStudioHours.toFixed(1)}h total`}
+            {loading ? 'Loading ' : `${activeCount} of ${teamData.length} employees logged hours   ${totalStudioHours.toFixed(1)}h total`}
           </div>
         </div>
         <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
@@ -126,7 +126,7 @@ function TeamOverviewTable() {
             ))}
           </div>
           {/* Navigation */}
-          <button className="btn btn-sm" onClick={() => view==='week' ? setWeekOffset(w=>w-1) : setMonthOffset(m=>m-1)}>←</button>
+          <button className="btn btn-sm" onClick={() => view==='week' ? setWeekOffset(w=>w-1) : setMonthOffset(m=>m-1)}> </button>
           <button className="btn btn-sm"
             style={{fontSize:11}}
             onClick={() => view==='week' ? setWeekOffset(0) : setMonthOffset(0)}>
@@ -134,7 +134,7 @@ function TeamOverviewTable() {
           </button>
           <button className="btn btn-sm"
             disabled={(view==='week'&&weekOffset>=0)||(view==='month'&&monthOffset>=0)}
-            onClick={() => view==='week' ? setWeekOffset(w=>w+1) : setMonthOffset(m=>m+1)}>→</button>
+            onClick={() => view==='week' ? setWeekOffset(w=>w+1) : setMonthOffset(m=>m+1)}> </button>
           {/* Export */}
           <button className="btn btn-sm" onClick={() => window.exportTeamExcel && window.exportTeamExcel()}
             style={{display:'flex',alignItems:'center',gap:4}}>
@@ -154,8 +154,8 @@ function TeamOverviewTable() {
           {[
             ['Studio total', totalStudioHours.toFixed(1)+'h', 'Period hours logged'],
             ['Active staff', activeCount+' / '+teamData.length, 'Logged at least 1 entry'],
-            ['Avg per person', teamData.length>0?(totalStudioHours/teamData.length).toFixed(1)+'h':'—', 'Studio average'],
-            ['Avg utilization', teamData.length>0?Math.round(teamData.reduce((s,r)=>s+r.util,0)/teamData.length)+'%':'—', 'vs target'],
+            ['Avg per person', teamData.length>0?(totalStudioHours/teamData.length).toFixed(1)+'h':' ', 'Studio average'],
+            ['Avg utilization', teamData.length>0?Math.round(teamData.reduce((s,r)=>s+r.util,0)/teamData.length)+'%':' ', 'vs target'],
           ].map(([lbl,val,sub])=>(
             <div key={lbl} style={{padding:'12px 20px',borderRight:'1px solid var(--border)'}}>
               <div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.06em'}}>{lbl}</div>
@@ -168,7 +168,7 @@ function TeamOverviewTable() {
 
       {/* -- Employee rows ------------------------------------- */}
       {loading ? (
-        <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading team data…</div>
+        <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading team data </div>
       ) : teamData.length === 0 ? (
         <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>
           No employee profiles found. Employees need to log in at least once to appear here.
@@ -206,9 +206,9 @@ function TeamOverviewTable() {
                       </td>
                       <td style={{color:'var(--text-muted)',fontSize:12}}>{row.lastProject}</td>
                       <td className="num" style={{fontWeight: row.hoursToday>0?600:400, color: row.hoursToday>0?'var(--accent)':'var(--text-muted)'}}>
-                        {row.hoursToday > 0 ? row.hoursToday.toFixed(1)+'h' : '—'}
+                        {row.hoursToday > 0 ? row.hoursToday.toFixed(1)+'h' : ' '}
                       </td>
-                      <td className="num" style={{fontWeight:600}}>{row.totalHours > 0 ? row.totalHours.toFixed(1)+'h' : '—'}</td>
+                      <td className="num" style={{fontWeight:600}}>{row.totalHours > 0 ? row.totalHours.toFixed(1)+'h' : ' '}</td>
                       <td>
                         <div className="util-bar" style={{height:6}}>
                           <span style={{width:`${pct}%`, background: utilColor(row.util), borderRadius:3}}/>
@@ -228,7 +228,7 @@ function TeamOverviewTable() {
                         )}
                       </td>
                       <td style={{textAlign:'center',color:'var(--text-muted)'}}>
-                        {isExpanded ? '▲' : '▼'}
+                        {isExpanded ? ' ' : ' '}
                       </td>
                     </tr>
                     {isExpanded && (
@@ -271,7 +271,7 @@ function TeamEmployeeBreakdown({ employee, range, view }) {
       }).catch(() => setLoading(false));
   }, [employee.id, range.from, range.to]);
 
-  if (loading) return <div style={{padding:'16px 24px',fontSize:13,color:'var(--text-muted)'}}>Loading…</div>;
+  if (loading) return <div style={{padding:'16px 24px',fontSize:13,color:'var(--text-muted)'}}>Loading </div>;
   if (entries.length === 0) return <div style={{padding:'16px 24px',fontSize:13,color:'var(--text-muted)'}}>No entries in this period.</div>;
 
   // Group by date
@@ -279,14 +279,14 @@ function TeamEmployeeBreakdown({ employee, range, view }) {
   entries.forEach(e => {
     if (!byDate[e.date]) byDate[e.date] = { hours: 0, projects: {} };
     byDate[e.date].hours += parseFloat(e.hours);
-    const pk = e.project_name || e.project_id || '—';
+    const pk = e.project_name || e.project_id || ' ';
     byDate[e.date].projects[pk] = (byDate[e.date].projects[pk] || 0) + parseFloat(e.hours);
   });
 
   // Group by project
   const byProject = {};
   entries.forEach(e => {
-    const pk = e.project_name || e.project_id || '—';
+    const pk = e.project_name || e.project_id || ' ';
     byProject[pk] = (byProject[pk] || 0) + parseFloat(e.hours);
   });
 
@@ -333,7 +333,7 @@ function TeamEmployeeBreakdown({ employee, range, view }) {
             <div key={proj} style={{marginBottom:8}}>
               <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
                 <span style={{color:'var(--text)'}}>{proj}</span>
-                <span style={{fontWeight:600,color:'var(--accent)',fontFamily:'var(--font-mono)'}}>{hrs.toFixed(1)}h · {pct.toFixed(0)}%</span>
+                <span style={{fontWeight:600,color:'var(--accent)',fontFamily:'var(--font-mono)'}}>{hrs.toFixed(1)}h   {pct.toFixed(0)}%</span>
               </div>
               <div style={{height:5,background:'var(--border)',borderRadius:3,overflow:'hidden'}}>
                 <div style={{width:`${pct}%`,height:'100%',background:'#102347',borderRadius:3}}/>
@@ -349,7 +349,7 @@ function TeamEmployeeBreakdown({ employee, range, view }) {
 
 function ManagerStats() {
   const [stats, setStats] = React.useState({
-    activeToday: '—', totalToday: '—', weekHrs: '—', util: '—', empCount: 0, pendingApprovals: '—',
+    activeToday: ' ', totalToday: ' ', weekHrs: ' ', util: ' ', empCount: 0, pendingApprovals: ' ',
   });
 
   React.useEffect(() => {
@@ -453,7 +453,7 @@ function Approvals() {
   const fmtWeek = (monday) => {
     const d = new Date(monday + 'T00:00:00');
     const fri = new Date(d); fri.setDate(d.getDate() + 4);
-    return `Week of ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${fri.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+    return `Week of ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}   ${fri.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
   };
 
   const fmtDate = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -480,17 +480,17 @@ function Approvals() {
         <div>
           <h3 className="card-title">Pending approvals</h3>
           <div className="card-sub">
-            {loading ? 'Loading…' : `${submissions.length} awaiting review`}
+            {loading ? 'Loading ' : `${submissions.length} awaiting review`}
           </div>
         </div>
         <button className="btn btn-sm" onClick={load}><Icon name="refresh" size={14}/></button>
       </div>
 
       {loading ? (
-        <div className="empty" style={{padding: '20px', color: 'var(--text-muted)', fontSize: 13}}>Loading…</div>
+        <div className="empty" style={{padding: '20px', color: 'var(--text-muted)', fontSize: 13}}>Loading </div>
       ) : submissions.length === 0 ? (
         <div className="empty" style={{padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>
-          ✓ All caught up — no pending timesheets.
+            All caught up   no pending timesheets.
         </div>
       ) : submissions.map(sub => {
         const p = sub.profile;
@@ -500,9 +500,9 @@ function Approvals() {
             <div className="avatar">{initials}</div>
             <div className="req-body">
               <p className="req-title">
-                {p?.name || sub.userId} · <span style={{fontWeight: 400, color: 'var(--text-muted)'}}>Timesheet</span>
+                {p?.name || sub.userId}   <span style={{fontWeight: 400, color: 'var(--text-muted)'}}>Timesheet</span>
               </p>
-              <p className="req-sub">{fmtWeek(sub.monday)} · {sub.hours.toFixed(1)} hrs total</p>
+              <p className="req-sub">{fmtWeek(sub.monday)}   {sub.hours.toFixed(1)} hrs total</p>
               <p className="req-sub" style={{fontSize: 11.5, marginTop: 2, color: 'var(--text-faint)'}}>
                 Submitted {fmtDate(sub.submittedAt)}
               </p>
@@ -518,14 +518,14 @@ function Approvals() {
                 onClick={() => reject(sub)}
                 style={{color: 'var(--red, #c0392b)'}}
               >
-                {acting === sub.key + '_reject' ? '…' : <><Icon name="x" size={14}/> Reject</>}
+                {acting === sub.key + '_reject' ? ' ' : <><Icon name="x" size={14}/> Reject</>}
               </button>
               <button
                 className="btn btn-sm btn-primary"
                 disabled={!!acting}
                 onClick={() => approve(sub)}
               >
-                {acting === sub.key + '_approve' ? '…' : <><Icon name="check" size={14}/> Approve</>}
+                {acting === sub.key + '_approve' ? ' ' : <><Icon name="check" size={14}/> Approve</>}
               </button>
             </div>
           </div>
@@ -607,18 +607,18 @@ function ReviewModal({ sub, onClose, onApprove, onReject }) {
                 <h3 style={{margin:0,fontSize:15}}>{p?.name || sub.userId}</h3>
                 <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>
                   Week of {new Date(sub.monday+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}
-                  {' · '}{total.toFixed(1)}h total
+                  {'   '}{total.toFixed(1)}h total
                 </div>
               </div>
             </div>
-            <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--text-muted)'}}>×</button>
+            <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--text-muted)'}}> </button>
           </div>
         </div>
 
         {/* Daily breakdown */}
         <div style={{overflowY:'auto',flex:1,padding:'16px 24px'}}>
           {loading ? (
-            <div style={{textAlign:'center',color:'var(--text-muted)',fontSize:13,padding:'20px'}}>Loading entries…</div>
+            <div style={{textAlign:'center',color:'var(--text-muted)',fontSize:13,padding:'20px'}}>Loading entries </div>
           ) : Object.keys(byDate).sort().map(date => (
             <div key={date} style={{marginBottom:16}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
@@ -632,8 +632,8 @@ function ReviewModal({ sub, onClose, onApprove, onReject }) {
                   background:'var(--surface-muted)',borderRadius:6,marginBottom:4,fontSize:12}}>
                   <div>
                     <span style={{fontWeight:500,color:'var(--text)'}}>{e.project_name||e.project_id}</span>
-                    {e.title && e.title !== 'Weekly timesheet — '+e.project_name && (
-                      <span style={{color:'var(--text-muted)',marginLeft:6}}>· {e.title}</span>
+                    {e.title && e.title !== 'Weekly timesheet   '+e.project_name && (
+                      <span style={{color:'var(--text-muted)',marginLeft:6}}>  {e.title}</span>
                     )}
                   </div>
                   <span style={{fontFamily:'var(--font-mono)',fontWeight:600,color:'var(--text)'}}>{parseFloat(e.hours).toFixed(1)}h</span>
@@ -647,18 +647,18 @@ function ReviewModal({ sub, onClose, onApprove, onReject }) {
             <label style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--text-muted)',display:'block',marginBottom:6}}>
               Send comment to employee
             </label>
-            {sent && <div style={{fontSize:12,color:'#1d8a4a',marginBottom:8}}>✓ Comment sent as notification</div>}
+            {sent && <div style={{fontSize:12,color:'#1d8a4a',marginBottom:8}}>  Comment sent as notification</div>}
             <textarea
               value={comment}
               onChange={e=>setComment(e.target.value)}
-              placeholder="e.g. Please split project hours more accurately…"
+              placeholder="e.g. Please split project hours more accurately "
               style={{width:'100%',height:70,border:'1px solid var(--border)',borderRadius:7,padding:'8px 10px',
                 fontFamily:'var(--font-sans)',fontSize:13,resize:'vertical',outline:'none',
                 background:'var(--surface)',color:'var(--text)'}}
             />
             <button className="btn btn-sm" onClick={sendComment} disabled={!comment.trim()||sending}
               style={{marginTop:6}}>
-              {sending ? 'Sending…' : 'Send comment'}
+              {sending ? 'Sending ' : 'Send comment'}
             </button>
           </div>
         </div>
@@ -706,7 +706,7 @@ function ProjectHours() {
     const s = new Date(from + 'T00:00:00');
     if (view === 'week') {
       const e = new Date(to + 'T00:00:00');
-      return s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' – ' + e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      return s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + '   ' + e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     }
     return s.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   };
@@ -733,8 +733,8 @@ function ProjectHours() {
     <div className="card">
       <div className="card-header" style={{flexWrap:'wrap',gap:6}}>
         <div>
-          <h3 className="card-title">Project hours · {fmtRangeLabel()}</h3>
-          <div className="card-sub">{loading ? 'Loading…' : `${totals.length} active projects`}</div>
+          <h3 className="card-title">Project hours   {fmtRangeLabel()}</h3>
+          <div className="card-sub">{loading ? 'Loading ' : `${totals.length} active projects`}</div>
         </div>
         <div style={{display:'flex',gap:4,alignItems:'center'}}>
           <div style={{display:'flex',background:'var(--surface-muted)',borderRadius:7,padding:2,gap:2}}>
@@ -747,15 +747,15 @@ function ProjectHours() {
                 }}>{lbl}</button>
             ))}
           </div>
-          <button className="btn btn-sm" onClick={() => setOffset(o=>o-1)}>←</button>
+          <button className="btn btn-sm" onClick={() => setOffset(o=>o-1)}> </button>
           <button className="btn btn-sm" style={{fontSize:11}} onClick={() => setOffset(0)}>
             {view==='week'?'This week':'This month'}
           </button>
-          <button className="btn btn-sm" disabled={offset>=0} onClick={() => setOffset(o=>o+1)}>→</button>
+          <button className="btn btn-sm" disabled={offset>=0} onClick={() => setOffset(o=>o+1)}> </button>
         </div>
       </div>
       {loading ? (
-        <div style={{padding: '16px', color: 'var(--text-muted)', fontSize: 13}}>Loading…</div>
+        <div style={{padding: '16px', color: 'var(--text-muted)', fontSize: 13}}>Loading </div>
       ) : totals.length === 0 ? (
         <div style={{padding: '16px', color: 'var(--text-muted)', fontSize: 13}}>No hours logged this period.</div>
       ) : totals.map(pt => {
@@ -767,7 +767,7 @@ function ProjectHours() {
           <div key={pt.id} className="project-item">
             <div>
               <div className="pname">{p?.name || pt.id}</div>
-              <div className="pmeta">{p?.code || pt.id} · {p?.client || ''} · {pt.team} {pt.team === 1 ? 'person' : 'people'}</div>
+              <div className="pmeta">{p?.code || pt.id}   {p?.client || ''}   {pt.team} {pt.team === 1 ? 'person' : 'people'}</div>
             </div>
             <div className={`util-bar ${over ? 'over' : ''}`} style={{width: '100%'}}>
               <span style={{width: `${pct}%`}}/>
@@ -799,7 +799,7 @@ function WeekTotalsBars() {
   const fmtWeekLabel = (dates) => {
     const s = new Date(dates[0] + 'T00:00:00');
     const e = new Date(dates[4] + 'T00:00:00');
-    return s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' – ' +
+    return s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + '   ' +
            e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
@@ -825,15 +825,15 @@ function WeekTotalsBars() {
     <div className="card">
       <div className="card-header" style={{flexWrap:'wrap',gap:6}}>
         <div>
-          <h3 className="card-title">Team hours · {dates.length ? fmtWeekLabel(dates) : '…'}</h3>
-          <div className="card-sub">Daily totals · all employees</div>
+          <h3 className="card-title">Team hours   {dates.length ? fmtWeekLabel(dates) : ' '}</h3>
+          <div className="card-sub">Daily totals   all employees</div>
         </div>
         <div style={{display:'flex',gap:4}}>
-          <button className="btn btn-sm" onClick={() => setWeekOffset(w=>w-1)}>←</button>
+          <button className="btn btn-sm" onClick={() => setWeekOffset(w=>w-1)}> </button>
           <button className="btn btn-sm" style={{fontSize:11}} onClick={() => setWeekOffset(0)} disabled={weekOffset===0}>
             This week
           </button>
-          <button className="btn btn-sm" disabled={weekOffset>=0} onClick={() => setWeekOffset(w=>w+1)}>→</button>
+          <button className="btn btn-sm" disabled={weekOffset>=0} onClick={() => setWeekOffset(w=>w+1)}> </button>
         </div>
       </div>
       <div className="day-bars" style={{height: 120}}>
@@ -852,7 +852,7 @@ function WeekTotalsBars() {
                   fontSize: 10.5, fontFamily: 'var(--font-mono)',
                   color: isToday ? 'var(--accent)' : 'var(--text-muted)',
                   fontWeight: isToday ? 600 : 400,
-                }}>{values[i] > 0 ? values[i].toFixed(1) + 'h' : '—'}</div>
+                }}>{values[i] > 0 ? values[i].toFixed(1) + 'h' : ' '}</div>
               </div>
               <div className="label" style={{fontWeight: isToday ? 600 : 400}}>{d}</div>
             </div>
@@ -965,7 +965,7 @@ function AppUsageBreakdown() {
 
   const empById = (id) => window.DATA.EMPLOYEES.find(e => e.id === id);
   const fmt = (h) => {
-    if (h === 0) return '—';
+    if (h === 0) return ' ';
     const hh = Math.floor(h);
     const mm = Math.round((h - hh) * 60);
     return `${hh}h ${String(mm).padStart(2, '0')}m`;
@@ -988,12 +988,12 @@ function AppUsageBreakdown() {
 
   return (
     <>
-      {/* Stats strip — matches Activity Monitor pattern */}
+      {/* Stats strip   matches Activity Monitor pattern */}
       <div className="stats-row" style={{marginTop: 6}}>
         <div className="card stat">
-          <div className="stat-label">Studio billable · {rangeLabel}</div>
+          <div className="stat-label">Studio billable   {rangeLabel}</div>
           <div className="stat-value">{fmtDec(appTotalSum)}<span className="unit">hrs</span></div>
-          <div className="stat-delta">of {fmtDec(studioTarget)}h target · {fmtDec(studioOther)}h not billed</div>
+          <div className="stat-delta">of {fmtDec(studioTarget)}h target   {fmtDec(studioOther)}h not billed</div>
         </div>
         <div className="card stat">
           <div className="stat-label">Avg. utilization</div>
@@ -1008,12 +1008,12 @@ function AppUsageBreakdown() {
             <span className={`bb-dot bb-${topApp.k}`} style={{marginRight: 8, width: 12, height: 12}}/>
             {APP_META[topApp.k].name}
           </div>
-          <div className="stat-delta">{fmtDec(topApp.hours)}h · {Math.round((topApp.hours / studioTotal) * 100)}% of tracked</div>
+          <div className="stat-delta">{fmtDec(topApp.hours)}h   {Math.round((topApp.hours / studioTotal) * 100)}% of tracked</div>
         </div>
         <div className="card stat">
           <div className="stat-label">Highest utilization</div>
           <div className="stat-value" style={{fontSize: 22}}>{topEmpObj.name.split(' ')[0]}</div>
-          <div className="stat-delta">{Math.round(topEmp.util)}% · {fmtDec(topEmp.billable)}h billable</div>
+          <div className="stat-delta">{Math.round(topEmp.util)}%   {fmtDec(topEmp.billable)}h billable</div>
         </div>
       </div>
 
@@ -1021,7 +1021,7 @@ function AppUsageBreakdown() {
         <div className="card-header" style={{display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap'}}>
           <div>
             <h3 className="card-title">Time breakdown by application</h3>
-            <div className="card-sub">Desktop agent · focus time only (app active + mouse/keyboard within 2 min)</div>
+            <div className="card-sub">Desktop agent   focus time only (app active + mouse/keyboard within 2 min)</div>
           </div>
           <div style={{flex: 1}}/>
           <div className="am-filters">
@@ -1036,7 +1036,7 @@ function AppUsageBreakdown() {
         <div className="au-split">
           <AppUsageDonut slices={donutSlices} total={studioTotal} studioUtil={studioUtil}/>
           <div className="au-split-legend">
-            <div className="au-split-title">Studio time mix · {rangeLabel}</div>
+            <div className="au-split-title">Studio time mix   {rangeLabel}</div>
             <div className="au-split-rows">
               {donutSlices.map(s => {
                 const pct = (s.value / studioTotal) * 100;
@@ -1052,12 +1052,12 @@ function AppUsageBreakdown() {
               })}
             </div>
             <div className="au-split-foot">
-              Hover any slice to isolate it · totals update live when you change the range
+              Hover any slice to isolate it   totals update live when you change the range
             </div>
           </div>
         </div>
 
-        {/* Per-employee list — same row shape as Activity Monitor */}
+        {/* Per-employee list   same row shape as Activity Monitor */}
         <div className="am-list">
           <div className="am-row am-row-head">
             <div>
@@ -1067,12 +1067,12 @@ function AppUsageBreakdown() {
             <div className="am-now-label" style={{marginBottom: 0}}>Distribution</div>
             <div style={{textAlign: 'right'}}>
               <button className={`tb-sort ${sortBy === 'billable' ? 'on' : ''}`} onClick={() => setSortBy('billable')}>
-                Billable {sortBy === 'billable' ? '↓' : ''}
+                Billable {sortBy === 'billable' ? ' ' : ''}
               </button>
             </div>
             <div style={{textAlign: 'right'}}>
               <button className={`tb-sort ${sortBy === 'util' ? 'on' : ''}`} onClick={() => setSortBy('util')}>
-                Util {sortBy === 'util' ? '↓' : ''}
+                Util {sortBy === 'util' ? ' ' : ''}
               </button>
             </div>
           </div>
@@ -1096,7 +1096,7 @@ function AppUsageBreakdown() {
                 <div className="am-now">
                   <div className="au-chips">
                     {topApps.map(a => (
-                      <span key={a.k} className="au-chip" title={`${APP_META[a.k].name} · ${fmt(a.h)}`}>
+                      <span key={a.k} className="au-chip" title={`${APP_META[a.k].name}   ${fmt(a.h)}`}>
                         <i className={`bb-dot bb-${a.k}`}/>
                         {APP_META[a.k].name}
                         <span className="au-chip-h">{fmt(a.h)}</span>
@@ -1111,14 +1111,14 @@ function AppUsageBreakdown() {
                         key={k}
                         className={`au-seg bb-${k}`}
                         style={{width: `${(r.apps[k] / r.total) * 100}%`}}
-                        title={`${APP_META[k].name} · ${fmt(r.apps[k])}`}
+                        title={`${APP_META[k].name}   ${fmt(r.apps[k])}`}
                       />
                     ))}
-                    {r.other > 0 && <div className="au-seg bb-other" style={{width: `${(r.other / r.total) * 100}%`}} title={`Other · ${fmt(r.other)}`}/>}
+                    {r.other > 0 && <div className="au-seg bb-other" style={{width: `${(r.other / r.total) * 100}%`}} title={`Other   ${fmt(r.other)}`}/>}
                   </div>
                   <div className="am-totals">
                     <span className="am-billable">{fmtDec(r.billable)}h billable</span>
-                    <span className="am-other">· {fmtDec(r.other)}h other</span>
+                    <span className="am-other">  {fmtDec(r.other)}h other</span>
                   </div>
                 </div>
                 <div style={{textAlign: 'right', fontVariantNumeric: 'tabular-nums'}}>
@@ -1169,13 +1169,13 @@ function ManagerView({ activeNav }) {
         <>
           <div className="section-title" style={{marginTop:0}}>
             <h2>Studio snapshot</h2>
-            <span className="hint">{todayStr} · Week {weekNum}</span>
+            <span className="hint">{todayStr}   Week {weekNum}</span>
           </div>
           <ManagerStats />
           <TeamOverviewTable />
           <div className="section-title">
             <h2>Projects & approvals</h2>
-            <span className="hint">This week · all active projects</span>
+            <span className="hint">This week   all active projects</span>
           </div>
           <div className="col-8-4">
             <ProjectHours />
@@ -1237,7 +1237,7 @@ function ManagerView({ activeNav }) {
           <button className="btn btn-sm" onClick={() => window.exportTeamPDF && window.exportTeamPDF(window._exportOptions)} style={{display:'flex',alignItems:'center',gap:4,color:'#102347',borderColor:'#102347'}}><Icon name="download" size={12}/> PDF</button>
             </div>
             <div style={{marginTop:24,paddingTop:20,borderTop:'1px solid var(--border)'}}>
-              <div className="card-sub" style={{marginBottom:12}}>Team summary · this week</div>
+              <div className="card-sub" style={{marginBottom:12}}>Team summary   this week</div>
               <ManagerStats />
             </div>
           </div>
