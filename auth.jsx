@@ -71,7 +71,7 @@ const Auth = {
     if (!u) return { ok: false };
     u.password = newPassword;
     Auth.saveUsers(users);
-    // Sync to Supabase — profiles table password column
+    // Sync to Supabase   profiles table password column
     if (window.sb) {
       window.sb.from('profiles').update({ password: newPassword }).eq('id', id).then(({ error }) => {
         if (error) console.warn('Supabase updatePassword error:', error.message);
@@ -240,7 +240,7 @@ function LoginScreen({ onLogin }) {
 
       <div className="login-hero">
         <div>
-          <div className="hero-kicker">Timesheet · BIM Studio</div>
+          <div className="hero-kicker">Timesheet   BIM Studio</div>
           <h2>Effortless Work Logging</h2>
           <p>
             Built to work quietly alongside you, capturing your design time without
@@ -249,7 +249,7 @@ function LoginScreen({ onLogin }) {
           </p>
         </div>
         <div className="login-hero-footer">
-          © 2026 Nature Landscape Architects · Internal tool
+            2026 Nature Landscape Architects   Internal tool
         </div>
       </div>
     </div>
@@ -318,7 +318,7 @@ function ChangePasswordModal({ user, open, onClose }) {
             <div>
               <h3 style={{margin: 0, fontSize: 15}}>Change password</h3>
               <p style={{margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)'}}>
-                {user.name} · {user.username}
+                {user.name}   {user.username}
               </p>
             </div>
           </div>
@@ -383,7 +383,7 @@ function ChangePasswordModal({ user, open, onClose }) {
               className="btn btn-primary"
               disabled={loading || !current || !newPw || !confirm}
             >
-              {loading ? 'Saving…' : 'Change password'}
+              {loading ? 'Saving ' : 'Change password'}
             </button>
           </div>
         </form>
