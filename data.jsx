@@ -29,7 +29,7 @@ const TODAY_ENTRIES = [
     id: 'e1',
     project: 'dch-f09',
     type: 'design',
-    title: 'LOD 300 hardscape modeling — north pavilion',
+    title: 'LOD 300 hardscape modeling   north pavilion',
     notes: 'Completed paving layout, coordinated levels with civil team',
     hours: 3.5,
   },
@@ -37,7 +37,7 @@ const TODAY_ENTRIES = [
     id: 'e2',
     project: 'dch-f02',
     type: 'meeting',
-    title: 'Client review — planting palette',
+    title: 'Client review   planting palette',
     notes: 'Emaar landscape lead + design team. Revisions logged.',
     hours: 1.0,
   },
@@ -59,20 +59,20 @@ const WEEK_DATA = [
   { project: 'mip-2a', hours: [0, 0, 0, 0, 0] },
 ];
 
-// Manager view — team today
+// Manager view   team today
 const TEAM_TODAY = [
   { emp: 'afsal', status: 'working', clockedIn: '08:42', hoursToday: 6.75, weekHours: 32.5, weekTarget: 40, currentProject: 'dch-f09' },
   { emp: 'sandra', status: 'working', clockedIn: '08:30', hoursToday: 7.0, weekHours: 35.0, weekTarget: 40, currentProject: 'dch-f02' },
   { emp: 'rivin', status: 'break', clockedIn: '09:05', hoursToday: 5.5, weekHours: 30.25, weekTarget: 40, currentProject: 'mip-2a' },
   { emp: 'mehnas', status: 'working', clockedIn: '08:55', hoursToday: 6.5, weekHours: 33.75, weekTarget: 40, currentProject: 'mip-2c' },
-  { emp: 'elbin', status: 'leave', clockedIn: '—', hoursToday: 0, weekHours: 24.0, weekTarget: 40, currentProject: null },
+  { emp: 'elbin', status: 'leave', clockedIn: ' ', hoursToday: 0, weekHours: 24.0, weekTarget: 40, currentProject: null },
 ];
 
 // Pending approvals
 const APPROVALS = [
-  { id: 'a1', type: 'timesheet', emp: 'sandra', label: 'Week of Apr 13 — 42.5 hrs', sub: 'Submitted Mon, Apr 20 · 2.5 hrs overtime' },
-  { id: 'a2', type: 'leave', emp: 'rivin', label: 'Annual leave — Apr 27 to Apr 30', sub: '4 days · Submitted Fri, Apr 17' },
-  { id: 'a3', type: 'timesheet', emp: 'elbin', label: 'Week of Apr 13 — 38 hrs', sub: 'Submitted Sun, Apr 19' },
+  { id: 'a1', type: 'timesheet', emp: 'sandra', label: 'Week of Apr 13   42.5 hrs', sub: 'Submitted Mon, Apr 20   2.5 hrs overtime' },
+  { id: 'a2', type: 'leave', emp: 'rivin', label: 'Annual leave   Apr 27 to Apr 30', sub: '4 days   Submitted Fri, Apr 17' },
+  { id: 'a3', type: 'timesheet', emp: 'elbin', label: 'Week of Apr 13   38 hrs', sub: 'Submitted Sun, Apr 19' },
 ];
 
 // Project hour totals this week
