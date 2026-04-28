@@ -10,7 +10,7 @@ function ClockCard({ clockState, setClockState, activity, user }) {
   const tzLabel = user?.tzLabel || 'UAE';
   const hourNow = parseInt(now.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', hour12: false }));
   const minNow = parseInt(now.toLocaleTimeString('en-GB', { timeZone: tz, minute: '2-digit' }));
-  const isBreak = hourNow === 13; // 1:00 PM – 2:00 PM
+  const isBreak = hourNow === 13; // 1:00 PM   2:00 PM
   const beforeWork = hourNow < 8 || (hourNow === 8 && minNow < 30);
   const afterWork = hourNow > 18 || (hourNow === 18 && minNow >= 30); // after 6:30 PM
   const isOT = afterWork && clockState === 'working'; // overtime after 6:30 PM
@@ -28,25 +28,25 @@ function ClockCard({ clockState, setClockState, activity, user }) {
     <div className="clock-card">
       <div style={{position: 'relative', zIndex: 2, minWidth: 0, flex: 1}}>
         <div style={{display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap'}}>
-          <div className="clock-label" style={{margin: 0}}>Tracking · Dubai Creek Harbor F09</div>
+          <div className="clock-label" style={{margin: 0}}>Tracking   Dubai Creek Harbor F09</div>
           <span className="activity-pill" style={{background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#c9d3e6'}}>
-            {now.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true })} {tzLabel} · Shift 8:30 AM–6:30 PM
+            {now.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true })} {tzLabel}   Shift 8:30 AM 6:30 PM
           </span>
           {running && (
             <span className={`activity-pill ${activity.idle ? 'idle' : ''}`}>
               <span className="pulse"/>
-              {activity.idle ? `Idle · ${idleSec}s` : 'Active'}
+              {activity.idle ? `Idle   ${idleSec}s` : 'Active'}
             </span>
           )}
-          {isBreak && <span className="activity-pill idle"><span className="pulse"/>Lunch break · 1:00 PM–2:00 PM</span>}
+          {isBreak && <span className="activity-pill idle"><span className="pulse"/>Lunch break   1:00 PM 2:00 PM</span>}
           {isOT && <span className="activity-pill" style={{background:'rgba(186,117,23,0.2)',color:'#e8a020',border:'1px solid rgba(186,117,23,0.3)'}}><span className="pulse" style={{background:'#e8a020'}}/>Overtime</span>}
         </div>
         <div className="clock-time">{fmt(activity.activeElapsed)}</div>
         <div className="clock-status">
           <span className={`clock-dot ${running && !activity.idle ? '' : 'off'}`} />
-          {running && !activity.idle && 'Clocked in · Timer follows your activity'}
-          {showIdleLabel && 'Timer paused — move mouse or press a key to resume'}
-          {clockState === 'break' && 'On break · Lunch 1:00 PM–2:00 PM'}
+          {running && !activity.idle && 'Clocked in   Timer follows your activity'}
+          {showIdleLabel && 'Timer paused   move mouse or press a key to resume'}
+          {clockState === 'break' && 'On break   Lunch 1:00 PM 2:00 PM'}
           {clockState === 'stopped' && 'Not clocked in'}
         </div>
         {running && (
@@ -86,9 +86,9 @@ function ClockCard({ clockState, setClockState, activity, user }) {
 
 function StatCards({ featuresEnabled }) {
   const stats = [
-    { label: 'Today', value: '0.00', unit: 'hrs', delta: 'Target 9h · 8:30am–6:30pm (1h break)', deltaClass: '' },
-    { label: 'This week', value: '—', unit: '/ 45 hrs', delta: 'Live from timesheet', deltaClass: '' },
-    { label: 'Overtime this month', value: '4.25', unit: 'hrs', delta: 'Within policy (≤8)', deltaClass: 'up' },
+    { label: 'Today', value: '0.00', unit: 'hrs', delta: 'Target 9h   8:30am 6:30pm (1h break)', deltaClass: '' },
+    { label: 'This week', value: ' ', unit: '/ 45 hrs', delta: 'Live from timesheet', deltaClass: '' },
+    { label: 'Overtime this month', value: '4.25', unit: 'hrs', delta: 'Within policy ( 8)', deltaClass: 'up' },
     { label: 'Leave balance', value: '18', unit: 'days', delta: '2 pending request', deltaClass: '' },
   ];
   return (
@@ -143,8 +143,8 @@ function TodayEntries({ entries, setEntries, userId }) {
     <div className="card">
       <div className="card-header">
         <div>
-          <h3 className="card-title">Today · Monday, April 20</h3>
-          <div className="card-sub">Working hours 8:30 AM–6:30 PM · Lunch 1:00 PM–2:00 PM · OT after 6:30 PM</div>
+          <h3 className="card-title">Today   Monday, April 20</h3>
+          <div className="card-sub">Working hours 8:30 AM 6:30 PM   Lunch 1:00 PM 2:00 PM   OT after 6:30 PM</div>
         </div>
         <div style={{display: 'flex', gap: 6}}>
           <button className="btn btn-sm"><Icon name="filter" size={14}/> Filter</button>
@@ -183,7 +183,7 @@ function TodayEntries({ entries, setEntries, userId }) {
           onKeyDown={(e) => e.key === 'Enter' && addEntry()}
         />
         <select className="select" value={draft.project} onChange={(e) => setDraft({...draft, project: e.target.value})}>
-          {window.DATA.PROJECTS.map(p => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
+          {window.DATA.PROJECTS.map(p => <option key={p.id} value={p.id}>{p.code}   {p.name}</option>)}
         </select>
         <input
           className="input"
@@ -200,7 +200,7 @@ function TodayEntries({ entries, setEntries, userId }) {
 
       <div className="entries-footer">
         <span style={{color: 'var(--text-muted)'}}>
-          {entries.length} {entries.length === 1 ? 'entry' : 'entries'} · Auto-saved
+          {entries.length} {entries.length === 1 ? 'entry' : 'entries'}   Auto-saved
         </span>
         <span className="total">Today total: {total.toFixed(2)} hrs</span>
       </div>
@@ -228,7 +228,7 @@ function WeeklyGrid({ user }) {
   const fmtWeekTitle = (dates) => {
     const s = new Date(dates[0] + 'T00:00:00');
     const e = new Date(dates[4] + 'T00:00:00');
-    return `Week of ${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })} – ${e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+    return `Week of ${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}   ${e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`;
   };
 
   // -- State --------------------------------------------------
@@ -306,10 +306,10 @@ function WeeklyGrid({ user }) {
     if (submitting) return;
     setSubmitting(true);
 
-    // Build week label e.g. "21 Apr – 25 Apr 2026"
+    // Build week label e.g. "21 Apr   25 Apr 2026"
     const s = new Date(dates[0] + 'T00:00:00');
     const e = new Date(dates[4] + 'T00:00:00');
-    const weekLabel = `${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    const weekLabel = `${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}   ${e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
     const notifyPayload = {
       employeeName: user.name,
@@ -335,7 +335,7 @@ function WeeklyGrid({ user }) {
         <div>
           <h3 className="card-title">{fmtWeekTitle(dates)}</h3>
           <div className="card-sub">
-            Weekly timesheet · {saving ? 'Saving…' : 'Auto-saved to Supabase'}
+            Weekly timesheet   {saving ? 'Saving ' : 'Auto-saved to Supabase'}
           </div>
         </div>
         <div style={{display: 'flex', gap: 6, alignItems: 'center'}}>
@@ -354,7 +354,7 @@ function WeeklyGrid({ user }) {
           <window.ExportButtons user={user} weekOffset={weekOffset} size="sm" />
           {!submitted && (
             <button className="btn btn-sm btn-primary" onClick={submitWeek} disabled={submitting || grand === 0} title="Submit when timesheet is complete">
-              <Icon name="send" size={14}/> {submitting ? 'Submitting…' : 'Submit'}
+              <Icon name="send" size={14}/> {submitting ? 'Submitting ' : 'Submit'}
             </button>
           )}
         </div>
@@ -362,7 +362,7 @@ function WeeklyGrid({ user }) {
 
       {loading ? (
         <div style={{padding: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>
-          Loading timesheet…
+          Loading timesheet 
         </div>
       ) : (
         <div style={{overflowX: 'auto'}}>
@@ -384,7 +384,7 @@ function WeeklyGrid({ user }) {
                   <td>
                     <div className="week-project">
                       {row.projectName}
-                      {row.client && <div className="proj-sub">{row.project.toUpperCase()} · {row.client}</div>}
+                      {row.client && <div className="proj-sub">{row.project.toUpperCase()}   {row.client}</div>}
                     </div>
                   </td>
                   {row.hours.map((h, ci) => (
@@ -395,23 +395,23 @@ function WeeklyGrid({ user }) {
                         min="0"
                         max="24"
                         value={h === 0 ? '' : h}
-                        placeholder="—"
+                        placeholder=" "
                         disabled={submitted}
                         onChange={(e) => updateCell(ri, ci, e.target.value)}
                       />
                     </td>
                   ))}
-                  <td className="week-total">{rowTotal(row) > 0 ? rowTotal(row).toFixed(2) : '—'}</td>
+                  <td className="week-total">{rowTotal(row) > 0 ? rowTotal(row).toFixed(2) : ' '}</td>
                 </tr>
               ))}
               <tr className="week-total-row">
                 <td><div className="week-project">Daily total</div></td>
                 {dates.map((_, ci) => (
                   <td key={ci} className={`week-total ${dates[ci] === today ? 'today-col' : ''}`}>
-                    {colTotal(ci) > 0 ? colTotal(ci).toFixed(2) : '—'}
+                    {colTotal(ci) > 0 ? colTotal(ci).toFixed(2) : ' '}
                   </td>
                 ))}
-                <td className="week-total" style={{fontWeight: 700}}>{grand > 0 ? grand.toFixed(2) : '—'}</td>
+                <td className="week-total" style={{fontWeight: 700}}>{grand > 0 ? grand.toFixed(2) : ' '}</td>
               </tr>
             </tbody>
           </table>
@@ -458,7 +458,7 @@ function WeekBars() {
       <div className="card-header">
         <div>
           <h3 className="card-title">Hours this week</h3>
-          <div className="card-sub">Daily totals · 8h target</div>
+          <div className="card-sub">Daily totals   8h target</div>
         </div>
         <span className="badge info"><span className="dot"/>On track</span>
       </div>
@@ -567,7 +567,7 @@ function EmployeeView({ featuresEnabled, user, activeNav }) {
     const mon = new Date(d); mon.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
     const fri = new Date(mon); fri.setDate(mon.getDate() + 4);
     return mon.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) +
-      ' – ' + fri.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      '   ' + fri.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
   const nav = activeNav || 'dashboard';
@@ -595,7 +595,7 @@ function EmployeeView({ featuresEnabled, user, activeNav }) {
         <>
           <div className="section-title" style={{marginTop:0}}>
             <h2>My Timesheet</h2>
-            <span className="hint">{getWeekLabel()} · Submit for approval when complete</span>
+            <span className="hint">{getWeekLabel()}   Submit for approval when complete</span>
           </div>
           <WeeklyGrid user={user} />
           <div className="section-title">
@@ -634,7 +634,7 @@ function EmployeeView({ featuresEnabled, user, activeNav }) {
                       </div>
                     </td>
                     <td style={{color:'var(--text-muted)',fontFamily:'var(--font-mono)',fontSize:12}}>{p.code}</td>
-                    <td style={{color:'var(--text-muted)'}}>{p.client||'—'}</td>
+                    <td style={{color:'var(--text-muted)'}}>{p.client||' '}</td>
                   </tr>
                 ))}
               </tbody>
