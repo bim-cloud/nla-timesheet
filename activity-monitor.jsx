@@ -1,4 +1,4 @@
-// Manager → Activity Monitor tab
+// Manager   Activity Monitor tab
 // Real data from Supabase entries table.
 // App-level tracking (Revit/AutoCAD timeline) requires the Windows Desktop Agent.
 
@@ -54,7 +54,7 @@ function useActivityData() {
         });
         const projects = Object.values(projMap).sort((a,b) => b.hours - a.hours);
 
-        // Week daily hours — Mon to Fri
+        // Week daily hours   Mon to Fri
         const weekDates = Array.from({length: 5}, (_, i) => {
           const d = new Date(getMonday());
           d.setDate(d.getDate() + i);
@@ -80,7 +80,7 @@ function useActivityData() {
           target,
           projects,
           weekByDay,
-          lastProject:  lastEntry?.project_name || '—',
+          lastProject:  lastEntry?.project_name || ' ',
           entriesCount: empToday.length,
         };
       });
@@ -117,7 +117,7 @@ function ActivityMonitor() {
 
   const filtered = filter === 'all' ? data : data.filter(a => a.status === filter);
 
-  const fmtRefresh = (d) => d ? d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
+  const fmtRefresh = (d) => d ? d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : ' ';
 
   if (selected) {
     return <ActivityDetail data={selected} onBack={() => setSelected(null)} />;
@@ -128,26 +128,26 @@ function ActivityMonitor() {
       <div className="section-title" style={{marginTop: 0}}>
         <h2>Activity Monitor</h2>
         <span className="hint">
-          Real data from timesheet entries · auto-refreshes every 60s
-          {lastRefresh && ` · Last updated ${fmtRefresh(lastRefresh)}`}
-          <button onClick={reload} style={{marginLeft:8,background:'none',border:'none',cursor:'pointer',color:'var(--accent)',fontSize:12,padding:0}}>↻ Refresh</button>
+          Real data from timesheet entries   auto-refreshes every 60s
+          {lastRefresh && `   Last updated ${fmtRefresh(lastRefresh)}`}
+          <button onClick={reload} style={{marginLeft:8,background:'none',border:'none',cursor:'pointer',color:'var(--accent)',fontSize:12,padding:0}}>  Refresh</button>
         </span>
       </div>
 
       <div className="stats-row">
         <div className="card stat">
           <div className="stat-label">Active today</div>
-          <div className="stat-value">{loading ? '—' : counts.active}<span className="unit">/ {counts.all}</span></div>
+          <div className="stat-value">{loading ? ' ' : counts.active}<span className="unit">/ {counts.all}</span></div>
           <div className="stat-delta up">Logged entries today</div>
         </div>
         <div className="card stat">
           <div className="stat-label">Offline today</div>
-          <div className="stat-value">{loading ? '—' : counts.offline}<span className="unit">employees</span></div>
+          <div className="stat-value">{loading ? ' ' : counts.offline}<span className="unit">employees</span></div>
           <div className="stat-delta">No entries logged yet</div>
         </div>
         <div className="card stat">
           <div className="stat-label">Studio hours today</div>
-          <div className="stat-value">{loading ? '—' : totalToday.toFixed(1)}<span className="unit">hrs</span></div>
+          <div className="stat-value">{loading ? ' ' : totalToday.toFixed(1)}<span className="unit">hrs</span></div>
           <div className="stat-delta">Across {counts.all} employees</div>
         </div>
         <div className="card stat">
@@ -160,7 +160,7 @@ function ActivityMonitor() {
       <div className="card">
         <div className="card-header" style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
           <div>
-            <h3 className="card-title">Employee activity · today</h3>
+            <h3 className="card-title">Employee activity   today</h3>
             <div className="card-sub">Click any row to see project breakdown and week trend</div>
           </div>
           <div style={{flex:1}}/>
@@ -174,7 +174,7 @@ function ActivityMonitor() {
         </div>
 
         {loading ? (
-          <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading activity data…</div>
+          <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading activity data </div>
         ) : filtered.length === 0 ? (
           <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>No employees found.</div>
         ) : (
@@ -188,7 +188,7 @@ function ActivityMonitor() {
                     <div className="avatar sm">{a.initials}</div>
                     <div style={{minWidth:0}}>
                       <div className="am-name">{a.name}</div>
-                      <div className="am-sub">{a.role}{a.lastProject !== '—' ? ` · ${a.lastProject}` : ''}</div>
+                      <div className="am-sub">{a.role}{a.lastProject !== ' ' ? `   ${a.lastProject}` : ''}</div>
                     </div>
                   </div>
                   <div className="am-now">
@@ -205,7 +205,7 @@ function ActivityMonitor() {
                     </div>
                     <div className="am-totals">
                       <span className="am-billable">{fmtH(a.weekHrs)} this week</span>
-                      <span className="am-other">· target {a.target}h</span>
+                      <span className="am-other">  target {a.target}h</span>
                     </div>
                   </div>
                   <div className="am-util">
@@ -264,11 +264,11 @@ function AppUsageSection({ userId }) {
   return (
     <>
       <div className="section-title">
-        <h2 style={{fontSize:15}}>App tracking · today</h2>
+        <h2 style={{fontSize:15}}>App tracking   today</h2>
         <span className="hint">{hasData ? 'Live from desktop agent' : 'Requires Windows Desktop Agent'}</span>
       </div>
       {loading ? (
-        <div className="card" style={{padding:'24px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading…</div>
+        <div className="card" style={{padding:'24px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading </div>
       ) : !hasData ? (
         <div className="card" style={{padding:'32px 28px',textAlign:'center'}}>
           <div style={{width:52,height:52,borderRadius:12,background:'rgba(16,35,71,0.06)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px',color:'var(--brand-navy)'}}>
@@ -278,13 +278,13 @@ function AppUsageSection({ userId }) {
           <p style={{margin:'0 0 16px',fontSize:13,color:'var(--text-muted)',maxWidth:360,marginLeft:'auto',marginRight:'auto'}}>
             Install the NLA Windows agent on this employee's PC to track Revit, AutoCAD, Teams usage automatically.
           </p>
-          <a href="/agent" target="_blank" style={{background:'var(--brand-navy)',color:'white',padding:'9px 18px',borderRadius:7,textDecoration:'none',fontSize:13,fontWeight:500}}>View setup guide →</a>
+          <a href="/agent" target="_blank" style={{background:'var(--brand-navy)',color:'white',padding:'9px 18px',borderRadius:7,textDecoration:'none',fontSize:13,fontWeight:500}}>View setup guide  </a>
         </div>
       ) : (
         <div className="card">
           <div className="card-header">
-            <h3 className="card-title">Application breakdown · today</h3>
-            <div className="card-sub">Focus time tracked by desktop agent · {fmtSecs(totalSecs)} total</div>
+            <h3 className="card-title">Application breakdown   today</h3>
+            <div className="card-sub">Focus time tracked by desktop agent   {fmtSecs(totalSecs)} total</div>
           </div>
           <table className="am-apps-table">
             <thead><tr><th>Application</th><th>Time</th><th>Share</th></tr></thead>
@@ -333,7 +333,7 @@ function ActivityDetail({ data, onBack }) {
           <div className="am-detail-meta">
             <span className={`am-status-pill am-status-${data.status}`}>
               <span className="dot"/>
-              {data.status === 'active' ? `Active · ${data.entriesCount} entries today` : 'No entries today'}
+              {data.status === 'active' ? `Active   ${data.entriesCount} entries today` : 'No entries today'}
             </span>
           </div>
         </div>
@@ -351,7 +351,7 @@ function ActivityDetail({ data, onBack }) {
 
       {/* Project breakdown */}
       <div className="section-title">
-        <h2 style={{fontSize:15}}>Projects · today</h2>
+        <h2 style={{fontSize:15}}>Projects   today</h2>
         <span className="hint">From logged timesheet entries</span>
       </div>
       <div className="card">
@@ -383,7 +383,7 @@ function ActivityDetail({ data, onBack }) {
         )}
       </div>
 
-      {/* App usage — real from desktop agent or placeholder */}
+      {/* App usage   real from desktop agent or placeholder */}
       <AppUsageSection userId={data.id} />
 
       {/* Week bars - real data */}
@@ -391,7 +391,7 @@ function ActivityDetail({ data, onBack }) {
         <div className="card">
           <div className="card-header">
             <h3 className="card-title">This week</h3>
-            <div className="card-sub">Daily hours logged · target 9h/day</div>
+            <div className="card-sub">Daily hours logged   target 9h/day</div>
           </div>
           <div className="am-week">
             {(data.weekByDay || [0,0,0,0,0]).map((h, i) => {
@@ -402,14 +402,14 @@ function ActivityDetail({ data, onBack }) {
                   <div className="am-week-bar-wrap">
                     <div className={`am-week-bar ${isToday ? 'today' : ''}`} style={{height:`${pct}%`}}/>
                   </div>
-                  <div className="am-week-val">{h > 0 ? h.toFixed(1) : '—'}</div>
+                  <div className="am-week-val">{h > 0 ? h.toFixed(1) : ' '}</div>
                   <div className="am-week-label">{days[i]}</div>
                 </div>
               );
             })}
           </div>
           <div className="am-week-summary">
-            Total: <b>{data.weekHrs.toFixed(1)}h</b> of {data.target}h target · {data.util}% utilization
+            Total: <b>{data.weekHrs.toFixed(1)}h</b> of {data.target}h target   {data.util}% utilization
           </div>
         </div>
 
