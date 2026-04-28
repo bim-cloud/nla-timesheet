@@ -70,7 +70,7 @@ function UserMenu({ user, onLogout, onSwitchView }) {
           <div className="user-menu-pop">
             <div className="who-block">
               <div className="n">{user.name}</div>
-              <div className="e">{user.role} · @{user.username}</div>
+              <div className="e">{user.role}   @{user.username}</div>
             </div>
             <button onClick={() => { setOpen(false); setChangePwOpen(true); }}>
               <Icon name="eye" size={14}/> Change password
@@ -113,7 +113,7 @@ function IdleModal({ idleFor, onResume, onDiscard }) {
 
 window.IdleModal = IdleModal;
 
-// Role presets + timezone presets — shared by the admin UI
+// Role presets + timezone presets   shared by the admin UI
 const ROLE_PRESETS = [
   'Studio Director', 'Studio Manager', 'Project Manager',
   'BIM Architect', 'BIM Engineer', 'BIM Modeler',
@@ -213,7 +213,7 @@ function UsersAdmin() {
           <div className="card-header">
             <div>
               <h3 className="card-title">Password reset requests</h3>
-              <div className="card-sub">{resets.length} pending · click "Reset password" to issue a new one</div>
+              <div className="card-sub">{resets.length} pending   click "Reset password" to issue a new one</div>
             </div>
           </div>
           {resets.map(r => {
@@ -223,7 +223,7 @@ function UsersAdmin() {
                 <div className="avatar">{u?.initials || '?'}</div>
                 <div className="req-body">
                   <p className="req-title">{u?.name || r.username} requested a password reset</p>
-                  <p className="req-sub">@{r.username} · {new Date(r.at).toLocaleString()}</p>
+                  <p className="req-sub">@{r.username}   {new Date(r.at).toLocaleString()}</p>
                 </div>
                 <div className="req-actions">
                   <button className="btn btn-sm" onClick={() => { Auth.clearReset(r.id); refresh(); }}>Dismiss</button>
@@ -239,7 +239,7 @@ function UsersAdmin() {
         <div className="card-header">
           <div>
             <h3 className="card-title">User accounts</h3>
-            <div className="card-sub">{users.length} users · manage logins, roles, timezones & passwords</div>
+            <div className="card-sub">{users.length} users   manage logins, roles, timezones & passwords</div>
           </div>
           <div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
             <button
@@ -253,7 +253,7 @@ function UsersAdmin() {
             <button className="btn btn-sm" onClick={syncAllToSupabase} disabled={syncing}
               style={{fontSize:12,color:'#1d8a4a',borderColor:'#1d8a4a'}}
               title="Fix missing users in Supabase">
-              {syncing ? 'Syncing...' : 'Sync → Supabase'}
+              {syncing ? 'Syncing...' : 'Sync   Supabase'}
             </button>
             {syncMsg && <span style={{fontSize:11,color:'#1d8a4a'}}>{syncMsg}</span>}
             <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Icon name="plus" size={14}/> Add user</button>
@@ -304,7 +304,7 @@ function UsersAdmin() {
                       >
                         {ROLE_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
                         {!ROLE_PRESETS.includes(u.role) && <option value={u.role}>{u.role}</option>}
-                        <option value="__custom__">Custom…</option>
+                        <option value="__custom__">Custom </option>
                       </select>
                     </td>
                     <td>
@@ -328,13 +328,13 @@ function UsersAdmin() {
                           patchUser(u.id, { tz: e.target.value, tzLabel: preset?.tzLabel || u.tzLabel });
                         }}
                       >
-                        {TZ_PRESETS.map(p => <option key={p.tz} value={p.tz}>{p.tzLabel} · {p.title}</option>)}
+                        {TZ_PRESETS.map(p => <option key={p.tz} value={p.tz}>{p.tzLabel}   {p.title}</option>)}
                       </select>
                     </td>
                     <td>
                       <div className="pw-cell">
                         <code className={`pw-dots ${show ? 'shown' : ''}`}>
-                          {show ? u.password : '••••••••'}
+                          {show ? u.password : '        '}
                         </code>
                         <button
                           className="btn-icon"
@@ -406,7 +406,7 @@ function UsersAdmin() {
                 >
                   {ROLE_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
                   {!ROLE_PRESETS.includes(draft.role) && draft.role && <option value={draft.role}>{draft.role}</option>}
-                  <option value="__custom__">Custom…</option>
+                  <option value="__custom__">Custom </option>
                 </select>
               </div>
               <div className="field">
@@ -422,7 +422,7 @@ function UsersAdmin() {
                   const preset = TZ_PRESETS.find(p => p.tz === e.target.value);
                   setDraft({...draft, tz: e.target.value, tzLabel: preset?.tzLabel || 'UAE'});
                 }}>
-                  {TZ_PRESETS.map(p => <option key={p.tz} value={p.tz}>{p.tzLabel} · {p.title}</option>)}
+                  {TZ_PRESETS.map(p => <option key={p.tz} value={p.tz}>{p.tzLabel}   {p.title}</option>)}
                 </select>
               </div>
               <div className="field">
@@ -474,7 +474,7 @@ function UsersAdmin() {
                 <div>
                   <div style={{fontWeight: 600}}>{deleteFor.name}</div>
                   <div style={{color: 'var(--text-muted)', fontSize: 12.5}}>
-                    @{deleteFor.username} · {deleteFor.role} · {deleteFor.tzLabel}
+                    @{deleteFor.username}   {deleteFor.role}   {deleteFor.tzLabel}
                   </div>
                 </div>
               </div>
@@ -526,9 +526,9 @@ function NotificationsPanel({ user, open, onClose }) {
   if (!open) return null;
 
   const icon = (type) => {
-    if (type === 'approved') return { bg: 'rgba(29,138,74,0.12)', color: '#1d8a4a', symbol: '✓' };
-    if (type === 'rejected') return { bg: 'rgba(165,40,34,0.10)', color: '#a52822', symbol: '↩' };
-    return { bg: 'rgba(16,35,71,0.08)', color: '#102347', symbol: '●' };
+    if (type === 'approved') return { bg: 'rgba(29,138,74,0.12)', color: '#1d8a4a', symbol: ' ' };
+    if (type === 'rejected') return { bg: 'rgba(165,40,34,0.10)', color: '#a52822', symbol: ' ' };
+    return { bg: 'rgba(16,35,71,0.08)', color: '#102347', symbol: ' ' };
   };
 
   const fmtDate = (iso) => {
@@ -552,10 +552,10 @@ function NotificationsPanel({ user, open, onClose }) {
 
         <div style={{maxHeight: 420, overflowY: 'auto'}}>
           {loading ? (
-            <div style={{padding: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>Loading…</div>
+            <div style={{padding: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>Loading </div>
           ) : notifs.length === 0 ? (
             <div style={{padding: '40px 24px', textAlign: 'center'}}>
-              <div style={{fontSize: 32, marginBottom: 10}}>🔔</div>
+              <div style={{fontSize: 32, marginBottom: 10}}> </div>
               <p style={{margin: 0, color: 'var(--text-muted)', fontSize: 13}}>No notifications yet.</p>
               <p style={{margin: '4px 0 0', color: 'var(--text-faint)', fontSize: 12}}>You will be notified when timesheets are approved or rejected.</p>
             </div>
@@ -650,7 +650,7 @@ function SettingsModal({ user, open, onClose }) {
                   </div>
                   <div>
                     <div style={{fontWeight: 600, fontSize: 14}}>{user.name}</div>
-                    <div style={{fontSize: 12, color: 'var(--text-muted)'}}>{user.role} · @{user.username}</div>
+                    <div style={{fontSize: 12, color: 'var(--text-muted)'}}>{user.role}   @{user.username}</div>
                   </div>
                 </div>
 
