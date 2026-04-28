@@ -243,19 +243,13 @@ function App() {
         }}
       />
 
-      {/* Settings Modal   Profile + Security */}
-      <window.SettingsModal
-        user={user}
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
-
-      {/* Notifications Panel   real from Supabase */}
-      <window.NotificationsPanel
-        user={user}
-        open={notifOpen}
-        onClose={() => setNotifOpen(false)}
-      />
+      {/* Settings Modal + Notifications Panel */}
+      {settingsOpen && window.SettingsModal && React.createElement(window.SettingsModal, {
+        user, open: settingsOpen, onClose: () => setSettingsOpen(false)
+      })}
+      {notifOpen && window.NotificationsPanel && React.createElement(window.NotificationsPanel, {
+        user, open: notifOpen, onClose: () => setNotifOpen(false)
+      })}
     </div>
   );
 }
