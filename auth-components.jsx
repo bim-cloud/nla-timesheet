@@ -81,11 +81,9 @@ function UserMenu({ user, onLogout, onSwitchView }) {
           </div>
         )}
       </div>
-      <window.ChangePasswordModal
-        user={user}
-        open={changePwOpen}
-        onClose={() => setChangePwOpen(false)}
-      />
+      {changePwOpen && window.ChangePasswordModal && React.createElement(window.ChangePasswordModal, {
+        user, open: changePwOpen, onClose: () => setChangePwOpen(false)
+      })}
     </>
   );
 }
@@ -697,11 +695,9 @@ function SettingsModal({ user, open, onClose }) {
         </div>
       </div>
 
-      <window.ChangePasswordModal
-        user={user}
-        open={changePwOpen}
-        onClose={() => setChangePwOpen(false)}
-      />
+      {changePwOpen && window.ChangePasswordModal && React.createElement(window.ChangePasswordModal, {
+        user, open: changePwOpen, onClose: () => setChangePwOpen(false)
+      })}
     </>
   );
 }
