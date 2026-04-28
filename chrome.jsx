@@ -1,3 +1,4 @@
+const Icon = window.Icon;
 const { useState, useEffect, useMemo } = React;
 
 function Sidebar({ view, activeNav, setActiveNav, user, onSettings, onNotifications }) {
