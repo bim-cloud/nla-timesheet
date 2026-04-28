@@ -1,3 +1,4 @@
+const Icon = window.Icon;
 // --- Activity / idle detection hook ---
 // Mimics Autodesk Revit/AutoCAD time-tracking behavior:
 // - tracks mouse move, click, key, wheel, scroll
@@ -102,7 +103,7 @@ function IdleModal({ idleFor, onResume, onDiscard }) {
         </div>
         <div className="modal-footer">
           <button className="btn" onClick={onDiscard}>Discard idle time</button>
-          <button className="btn btn-primary" onClick={onResume}>Keep &amp; resume</button>
+          <button className="btn btn-primary" onClick={onResume}>Keep and resume</button>
         </div>
       </div>
     </div>
