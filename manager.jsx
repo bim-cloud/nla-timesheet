@@ -1234,8 +1234,15 @@ function ManagerView({ activeNav }) {
               <button
                 className="btn btn-primary"
                 style={{display:'flex',alignItems:'center',gap:8,padding:'10px 20px'}}
-                <button className="btn btn-sm" onClick={() => { const TB = window.TeamExportButtons; if(TB) { const el = document.createElement('div'); } window.exportTeamExcel && window.exportTeamExcel(window._exportOptions); }} style={{display:'flex',alignItems:'center',gap:4}}><Icon name="download" size={12}/> Excel</button>
-          <button className="btn btn-sm" onClick={() => window.exportTeamPDF && window.exportTeamPDF(window._exportOptions)} style={{display:'flex',alignItems:'center',gap:4,color:'#102347',borderColor:'#102347'}}><Icon name="download" size={12}/> PDF</button>
+                onClick={() => window.exportTeamExcel && window.exportTeamExcel()}>
+                <Icon name="download" size={15}/> Export Team Excel
+              </button>
+              <button
+                className="btn"
+                style={{display:'flex',alignItems:'center',gap:8,padding:'10px 20px',color:'#102347',borderColor:'#102347'}}
+                onClick={() => window.exportTeamPDF && window.exportTeamPDF()}>
+                <Icon name="download" size={15}/> Export Team PDF
+              </button>
             </div>
             <div style={{marginTop:24,paddingTop:20,borderTop:'1px solid var(--border)'}}>
               <div className="card-sub" style={{marginBottom:12}}>Team summary   this week</div>
