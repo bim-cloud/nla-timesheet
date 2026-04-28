@@ -1,3 +1,4 @@
+const Icon = window.Icon;
 // -- Team Timesheet Overview ------------------------------------
 // Shows weekly/monthly hours per employee with navigation
 
@@ -1245,7 +1246,7 @@ function ManagerView({ activeNav }) {
       )}
 
       {/* -- Activity ----------------------------------------- */}
-      {nav === 'activity' && <window.ActivityMonitor />}
+      {nav === 'activity' && {window.ActivityMonitor && React.createElement(window.ActivityMonitor)}}
 
       {/* -- Users -------------------------------------------- */}
       {nav === 'users' && (
@@ -1254,7 +1255,7 @@ function ManagerView({ activeNav }) {
             <h2>Users & access</h2>
             <span className="hint">Add accounts, reset passwords, manage roles</span>
           </div>
-          <window.UsersAdmin />
+          {window.UsersAdmin && React.createElement(window.UsersAdmin)}
         </>
       )}
 
