@@ -135,7 +135,7 @@ function App() {
 
   React.useEffect(() => { localStorage.setItem('nla_view', view); }, [view]);
 
-  // When user logs in — managers go straight to manager view, employees stay on employee view
+  // When user logs in   managers go straight to manager view, employees stay on employee view
   React.useEffect(() => {
     if (user) {
       if (user.type === 'manager') {
@@ -180,7 +180,7 @@ function App() {
   // non-manager users can only see employee view
   const effectiveView = canSwitchView && (view === 'manager' ? mgrUnlocked : true) ? view : 'employee';
 
-  // Managers can switch views freely — no password re-entry needed
+  // Managers can switch views freely   no password re-entry needed
   const requestSetView = (v) => {
     setView(v);
     persistEdit({ view: v });
@@ -191,13 +191,13 @@ function App() {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
   const subtitle = effectiveView === 'employee'
-    ? `${todayStr} · Here's your day at a glance.`
-    : `${todayStr} · Here's where the studio stands today.`;
+    ? `${todayStr}   Here's your day at a glance.`
+    : `${todayStr}   Here's where the studio stands today.`;
 
   const logout = () => { Auth.clearSession(); setUser(null); };
 
   return (
-    <div className="app" data-screen-label={`NLA Timesheet · ${effectiveView}`}>
+    <div className="app" data-screen-label={`NLA Timesheet   ${effectiveView}`}>
       <Sidebar view={effectiveView} activeNav={activeNav} setActiveNav={setActiveNav} user={user} onSettings={() => setSettingsOpen(true)} onNotifications={() => setNotifOpen(true)} />
       <div className="main">
         <Topbar
@@ -243,14 +243,14 @@ function App() {
         }}
       />
 
-      {/* Settings Modal — Profile + Security */}
+      {/* Settings Modal   Profile + Security */}
       <window.SettingsModal
         user={user}
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
       />
 
-      {/* Notifications Panel — real from Supabase */}
+      {/* Notifications Panel   real from Supabase */}
       <window.NotificationsPanel
         user={user}
         open={notifOpen}
