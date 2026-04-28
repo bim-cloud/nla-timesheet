@@ -122,6 +122,15 @@ function greetingPrefix() {
 }
 
 function App() {
+  // Resolve components from window (defined in other script files)
+  const Icon          = window.Icon;
+  const LoginScreen   = window.LoginScreen;
+  const Sidebar       = window.Sidebar;
+  const Topbar        = window.Topbar;
+  const UserMenu      = window.UserMenu;
+  const EmployeeView  = window.EmployeeView;
+  const ManagerView   = window.ManagerView;
+
   const [user, setUser] = React.useState(() => Auth.getSession());
   const [view, setView] = React.useState(() => localStorage.getItem('nla_view') || 'employee');
   const [activeNav, setActiveNav] = React.useState('dashboard');
