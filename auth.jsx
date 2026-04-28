@@ -1,3 +1,4 @@
+const Icon = window.Icon;
 // --- Auth store (localStorage-backed) ---
 // Seed users. Manager (admin) can add/reset passwords.
 const AUTH_KEY = 'nla_users_v3';
