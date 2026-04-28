@@ -123,7 +123,7 @@ const SupaEntries = {
     return data || [];
   },
 
-  // Upsert a grid cell — finds existing grid entry for project+date and updates, or inserts
+  // Upsert a grid cell   finds existing grid entry for project+date and updates, or inserts
   async upsertGridCell(userId, projectId, projectName, date, hours) {
     // Find existing grid entry for this project+date
     const { data: existing } = await sb
@@ -145,7 +145,7 @@ const SupaEntries = {
 
     if (existing?.id) {
       // Update
-      await sb.from('entries').update({ hours, title: `Weekly timesheet — ${projectName}` }).eq('id', existing.id);
+      await sb.from('entries').update({ hours, title: `Weekly timesheet   ${projectName}` }).eq('id', existing.id);
     } else {
       // Insert
       await sb.from('entries').insert({
@@ -154,7 +154,7 @@ const SupaEntries = {
         project_id:   projectId,
         project_name: projectName,
         task_type:    'grid',
-        title:        `Weekly timesheet — ${projectName}`,
+        title:        `Weekly timesheet   ${projectName}`,
         notes:        '',
         hours,
         status:       'draft',
@@ -174,7 +174,7 @@ const SupaEntries = {
       .lte('date', friday.toISOString().split('T')[0]);
     if (error) { console.warn('Submit week error:', error.message); return false; }
 
-    // Fire email notification (non-blocking — don't fail submission if email fails)
+    // Fire email notification (non-blocking   don't fail submission if email fails)
     if (notifyPayload) {
       try {
         await sb.functions.invoke('notify-submission', { body: notifyPayload });
