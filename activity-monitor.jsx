@@ -1,3 +1,4 @@
+const Icon = window.Icon;
 // Manager   Activity Monitor tab
 // Real data from Supabase entries table.
 // App-level tracking (Revit/AutoCAD timeline) requires the Windows Desktop Agent.
