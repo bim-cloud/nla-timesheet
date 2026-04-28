@@ -1,0 +1,4976 @@
+
+// ======== supabase-client.jsx ========
+
+// -- Supabase client ------------------------------------------
+// Loaded before all other JSX files in index.html
+
+const SUPABASE_URL  = 'https://tddegqxozgdnottitzeq.supabase.co';
+const SUPABASE_KEY  = 'sb_publishable_svk_tc3SIHy7e5yL2n3gYA_cH9yTvPg';
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+window.sb = sb;
+
+// -- Profile helpers -------------------------------------------
+
+const SupaProfiles = {
+  // Upsert profile when user logs in
+  async upsert(user) {
+    const { error } = await sb.from('profiles').upsert({
+      id:        user.id,
+      username:  user.username,
+      name:      user.name,
+      role:      user.role,
+      user_type: user.type,
+      initials:  user.initials,
+      tz:        user.tz        || 'Asia/Dubai',
+      tz_label:  user.tzLabel   || 'UAE',
+    }, { onConflict: 'id' });
+    if (error) console.warn('Profile upsert error:', error.message);
+  },
+
+  async getAll() {
+    const { data, error } = await sb.from('profiles').select('*').order('name');
+    if (error) { console.warn('Profiles fetch error:', error.message); return []; }
+    return data || [];
+  },
+};
+
+// -- Entry helpers ---------------------------------------------
+
+const SupaEntries = {
+  // Load entries for a user on a given date (YYYY-MM-DD)
+  async forDay(userId, date) {
+    const { data, error } = await sb
+      .from('entries')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('date', date)
+      .order('created_at');
+    if (error) { console.warn('Entries fetch error:', error.message); return []; }
+    return data || [];
+  },
+
+  // Load all entries for a date (manager view)
+  async teamForDay(date) {
+    const { data, error } = await sb
+      .from('entries')
+      .select('*, profiles(name, role, initials, user_type)')
+      .eq('date', date)
+      .order('created_at');
+    if (error) { console.warn('Team entries fetch error:', error.message); return []; }
+    return data || [];
+  },
+
+  // Load this week's entries for a user
+  async forWeek(userId, mondayDate) {
+    const friday = new Date(mondayDate);
+    friday.setDate(friday.getDate() + 4);
+    const { data, error } = await sb
+      .from('entries')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('date', mondayDate)
+      .lte('date', friday.toISOString().split('T')[0])
+      .order('date');
+    if (error) { console.warn('Week entries fetch error:', error.message); return []; }
+    return data || [];
+  },
+
+  // Insert a new entry
+  async add(userId, entry) {
+    const today = new Date().toISOString().split('T')[0];
+    const { data, error } = await sb.from('entries').insert({
+      user_id:      userId,
+      date:         today,
+      project_id:   entry.project,
+      project_name: (window.DATA?.PROJECTS || []).find(p => p.id === entry.project)?.name || entry.project,
+      task_type:    entry.type,
+      title:        entry.title,
+      notes:        entry.notes || '',
+      hours:        entry.hours,
+      status:       'draft',
+    }).select().single();
+    if (error) { console.warn('Entry insert error:', error.message); return null; }
+    return data;
+  },
+
+  // Delete an entry
+  async remove(entryId) {
+    const { error } = await sb.from('entries').delete().eq('id', entryId);
+    if (error) console.warn('Entry delete error:', error.message);
+  },
+
+  // Submit a day's entries (change status to 'submitted')
+  async submitDay(userId, date) {
+    const { error } = await sb
+      .from('entries')
+      .update({ status: 'submitted' })
+      .eq('user_id', userId)
+      .eq('date', date);
+    if (error) console.warn('Submit error:', error.message);
+  },
+
+
+  // Load all entries for a week grouped by project+day (for weekly grid)
+  async forWeekGrid(userId, mondayDate) {
+    const friday = new Date(mondayDate);
+    friday.setDate(friday.getDate() + 4);
+    const { data, error } = await sb
+      .from('entries')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('date', mondayDate)
+      .lte('date', friday.toISOString().split('T')[0])
+      .order('created_at');
+    if (error) { console.warn('Week grid fetch error:', error.message); return []; }
+    return data || [];
+  },
+
+  // Upsert a grid cell   finds existing grid entry for project+date and updates, or inserts
+  async upsertGridCell(userId, projectId, projectName, date, hours) {
+    // Find existing grid entry for this project+date
+    const { data: existing } = await sb
+      .from('entries')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('date', date)
+      .eq('project_id', projectId)
+      .eq('task_type', 'grid')
+      .maybeSingle();
+
+    if (hours <= 0) {
+      // Delete if exists
+      if (existing?.id) {
+        await sb.from('entries').delete().eq('id', existing.id);
+      }
+      return;
+    }
+
+    if (existing?.id) {
+      // Update
+      await sb.from('entries').update({ hours, title: `Weekly timesheet   ${projectName}` }).eq('id', existing.id);
+    } else {
+      // Insert
+      await sb.from('entries').insert({
+        user_id:      userId,
+        date,
+        project_id:   projectId,
+        project_name: projectName,
+        task_type:    'grid',
+        title:        `Weekly timesheet   ${projectName}`,
+        notes:        '',
+        hours,
+        status:       'draft',
+      });
+    }
+  },
+
+  // Submit all entries for a week + trigger email notification
+  async submitWeek(userId, mondayDate, notifyPayload) {
+    const friday = new Date(mondayDate);
+    friday.setDate(friday.getDate() + 4);
+    const { error } = await sb
+      .from('entries')
+      .update({ status: 'submitted' })
+      .eq('user_id', userId)
+      .gte('date', mondayDate)
+      .lte('date', friday.toISOString().split('T')[0]);
+    if (error) { console.warn('Submit week error:', error.message); return false; }
+
+    // Fire email notification (non-blocking   don't fail submission if email fails)
+    if (notifyPayload) {
+      try {
+        await sb.functions.invoke('notify-submission', { body: notifyPayload });
+      } catch (e) {
+        console.warn('Email notification failed (non-critical):', e.message);
+      }
+    }
+    return true;
+  },
+
+
+  // Get all submitted (pending) timesheets for manager approval
+  async getPendingSubmissions() {
+    const { data, error } = await sb
+      .from('entries')
+      .select('*, profiles(name, role, initials)')
+      .eq('status', 'submitted')
+      .order('created_at', { ascending: false });
+    if (error) { console.warn('Pending fetch error:', error.message); return []; }
+    return data || [];
+  },
+
+  // Approve a list of entry IDs
+  async approveSubmission(entryIds, employeeId, weekLabel) {
+    const { error } = await sb
+      .from('entries')
+      .update({ status: 'approved' })
+      .in('id', entryIds);
+    if (error) { console.warn('Approve error:', error.message); return false; }
+    // Notify employee
+    if (employeeId) {
+      await sb.from('notifications').insert({
+        user_id: employeeId,
+        type: 'approved',
+        title: 'Timesheet approved',
+        message: weekLabel ? `Your timesheet for ${weekLabel} has been approved.` : 'Your timesheet has been approved.',
+      });
+    }
+    return true;
+  },
+
+  // Reject a list of entry IDs (set back to draft so employee can resubmit)
+  async rejectSubmission(entryIds, employeeId, weekLabel) {
+    const { error } = await sb
+      .from('entries')
+      .update({ status: 'draft' })
+      .in('id', entryIds);
+    if (error) { console.warn('Reject error:', error.message); return false; }
+    // Notify employee
+    if (employeeId) {
+      await sb.from('notifications').insert({
+        user_id: employeeId,
+        type: 'rejected',
+        title: 'Timesheet returned',
+        message: weekLabel ? `Your timesheet for ${weekLabel} has been returned. Please review and resubmit.` : 'Your timesheet has been returned for revision.',
+      });
+    }
+    return true;
+  },
+
+  // Manager: load all team entries + hours summary for a date range
+  async teamSummary(fromDate, toDate) {
+    const { data, error } = await sb
+      .from('entries')
+      .select('user_id, date, hours, project_id, status, profiles(name, initials, role)')
+      .gte('date', fromDate)
+      .lte('date', toDate)
+      .order('date');
+    if (error) { console.warn('Team summary error:', error.message); return []; }
+    return data || [];
+  },
+};
+
+// -- Password helpers (stored in profiles.password column) ---
+const SupaPasswords = {
+  async update(userId, newPassword) {
+    const { error } = await sb.from('profiles').update({ password: newPassword }).eq('id', userId);
+    if (error) { console.warn('Password update error:', error.message); return false; }
+    return true;
+  },
+  async verify(userId, password) {
+    const { data, error } = await sb.from('profiles').select('password').eq('id', userId).single();
+    if (error || !data) return false;
+    return data.password === password;
+  },
+};
+
+window.SupaProfiles  = SupaProfiles;
+window.SupaEntries   = SupaEntries;
+window.SupaPasswords = SupaPasswords;
+
+// -- Notifications ----------------------------------------------
+const SupaNotifications = {
+  async getForUser(userId) {
+    const { data, error } = await sb
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (error) { console.warn('Notifications fetch error:', error.message); return []; }
+    return data || [];
+  },
+  async markRead(userId) {
+    await sb.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
+  },
+  async markOneRead(id) {
+    await sb.from('notifications').update({ read: true }).eq('id', id);
+  },
+  async create(userId, type, title, message) {
+    const { error } = await sb.from('notifications').insert({ user_id: userId, type, title, message });
+    if (error) console.warn('Notification create error:', error.message);
+  },
+  async getUnreadCount(userId) {
+    const { count, error } = await sb.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', userId).eq('read', false);
+    if (error) return 0;
+    return count || 0;
+  },
+};
+
+window.SupaNotifications = SupaNotifications;
+
+// -- App Usage (Desktop Agent) ----------------------------------
+const SupaAppUsage = {
+  async forDay(userId, date) {
+    const { data, error } = await sb
+      .from('app_usage')
+      .select('app_key, focus_seconds')
+      .eq('user_id', userId)
+      .eq('date', date);
+    if (error) { console.warn('App usage fetch error:', error.message); return []; }
+    // Aggregate by app_key
+    const agg = {};
+    (data || []).forEach(r => {
+      agg[r.app_key] = (agg[r.app_key] || 0) + r.focus_seconds;
+    });
+    return agg;
+  },
+  async teamForDay(date) {
+    const { data, error } = await sb
+      .from('app_usage')
+      .select('user_id, app_key, focus_seconds')
+      .eq('date', date);
+    if (error) { console.warn('Team app usage error:', error.message); return []; }
+    return data || [];
+  },
+};
+
+window.SupaAppUsage = SupaAppUsage;
+
+
+
+
+// ======== icons.jsx ========
+
+// Minimal stroke icons
+const Icon = ({ name, size = 16 }) => {
+  const paths = {
+    home: <><path d="M3 12l9-9 9 9"/><path d="M5 10v10h14V10"/></>,
+    clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></>,
+    users: <><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.5-3.5 3-6 6.5-6s6 2.5 6.5 6"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14c2.5 0 4.5 2 4.5 4.5"/></>,
+    briefcase: <><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></>,
+    check: <><path d="M4 12l5 5L20 6"/></>,
+    x: <><path d="M6 6l12 12M18 6L6 18"/></>,
+    play: <><path d="M7 5v14l12-7z" fill="currentColor" stroke="none"/></>,
+    pause: <><rect x="7" y="5" width="3.5" height="14" fill="currentColor" stroke="none"/><rect x="13.5" y="5" width="3.5" height="14" fill="currentColor" stroke="none"/></>,
+    plus: <><path d="M12 5v14M5 12h14"/></>,
+    download: <><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/></>,
+    filter: <><path d="M4 5h16l-6 8v5l-4 2v-7z"/></>,
+    more: <><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></>,
+    coffee: <><path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8z"/><path d="M17 10h2a2.5 2.5 0 1 1 0 5h-2"/><path d="M7 3v3M11 3v3M15 3v3"/></>,
+    chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,
+    settings: <><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/></>,
+    bell: <><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></>,
+    search: <><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></>,
+    chevronR: <><path d="M9 6l6 6-6 6"/></>,
+    chevronL: <><path d="M15 6l-6 6 6 6"/></>,
+    send: <><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></>,
+    document: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></>,
+    tree: <><path d="M12 2l4 6h-2l3 5h-2l3 5H6l3-5H7l3-5H8z"/><path d="M12 18v4"/></>,
+    pulse: <><path d="M3 12h4l2-6 3 12 2-9 2 6 2-3h3"/></>,
+    desktop: <><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></>,
+    eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>,
+    eyeOff: <><path d="M3 3l18 18"/><path d="M10.58 10.58a3 3 0 0 0 4.24 4.24"/><path d="M9.88 5.09A10.94 10.94 0 0 1 12 5c6.5 0 10 7 10 7a17.7 17.7 0 0 1-3.16 4.19"/><path d="M6.1 6.1C3.6 7.85 2 12 2 12s3.5 7 10 7a10.94 10.94 0 0 0 4.91-1.12"/></>,
+    key: <><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15L21 2M16 7l3 3M14 9l3 3"/></>,
+    trash: <><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14M10 11v6M14 11v6"/></>,
+    copy: <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
+  };
+  return (
+    <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {paths[name]}
+    </svg>
+  );
+};
+
+window.Icon = Icon;
+
+
+
+
+// ======== data.jsx ========
+
+// Sample data for Nature Landscape Architects
+
+const PROJECTS = [
+  { id: 'dch-f02', code: 'DCH-F02', name: 'Dubai Creek Harbor F02 Plot', client: 'Emaar', color: '#2f559b' },
+  { id: 'dch-f09', code: 'DCH-F09', name: 'Dubai Creek Harbor F09 Plot', client: 'Emaar', color: '#3a7ca5' },
+  { id: 'dch-f12', code: 'DCH-F12', name: 'Dubai Creek Harbor F12 Plot', client: 'Emaar', color: '#16697a' },
+  { id: 'mip-2a', code: 'MIP-2A', name: 'Mid Island Parkway Phase 2A', client: 'Aldar', color: '#489c6c' },
+  { id: 'mip-2c', code: 'MIP-2C', name: 'Mid Island Parkway Phase 2C', client: 'Aldar', color: '#5f7a3f' },
+  { id: 'mip-2d', code: 'MIP-2D', name: 'Mid Island Parkway Phase 2D', client: 'Aldar', color: '#8a7a3f' },
+];
+
+const TASK_TYPES = [
+  { id: 'design', label: 'Design / drafting', cls: 'design' },
+  { id: 'meeting', label: 'Client meeting', cls: 'meeting' },
+  { id: 'review', label: 'Review / QA', cls: 'review' },
+];
+
+const EMPLOYEES = [
+  { id: 'afsal', name: 'Afsal Badrudeen', role: 'BIM Architect', initials: 'AB' },
+  { id: 'sandra', name: 'Sandra', role: 'BIM Architect', initials: 'SA' },
+  { id: 'rivin', name: 'Rivin Wilson', role: 'BIM Engineer', initials: 'RW' },
+  { id: 'mehnas', name: 'Mehnas N Manzoor', role: 'BIM Engineer', initials: 'MM' },
+  { id: 'elbin', name: 'Elbin Paulose', role: 'BIM Engineer', initials: 'EP' },
+];
+
+// Today's entries for the logged-in employee (Afsal)
+const TODAY_ENTRIES = [
+  {
+    id: 'e1',
+    project: 'dch-f09',
+    type: 'design',
+    title: 'LOD 300 hardscape modeling   north pavilion',
+    notes: 'Completed paving layout, coordinated levels with civil team',
+    hours: 3.5,
+  },
+  {
+    id: 'e2',
+    project: 'dch-f02',
+    type: 'meeting',
+    title: 'Client review   planting palette',
+    notes: 'Emaar landscape lead + design team. Revisions logged.',
+    hours: 1.0,
+  },
+  {
+    id: 'e3',
+    project: 'mip-2c',
+    type: 'design',
+    title: 'Irrigation family updates in Revit',
+    notes: 'Updated parametric drip-line family to v2.1',
+    hours: 2.25,
+  },
+];
+
+// Week grid data for logged-in employee
+const WEEK_DATA = [
+  { project: 'dch-f09', hours: [3.5, 4.0, 6.5, 3.5, 0] },
+  { project: 'dch-f02', hours: [2.0, 2.5, 0, 1.0, 0] },
+  { project: 'mip-2c', hours: [2.5, 1.5, 1.5, 2.25, 0] },
+  { project: 'mip-2a', hours: [0, 0, 0, 0, 0] },
+];
+
+// Manager view   team today
+const TEAM_TODAY = [
+  { emp: 'afsal', status: 'working', clockedIn: '08:42', hoursToday: 6.75, weekHours: 32.5, weekTarget: 40, currentProject: 'dch-f09' },
+  { emp: 'sandra', status: 'working', clockedIn: '08:30', hoursToday: 7.0, weekHours: 35.0, weekTarget: 40, currentProject: 'dch-f02' },
+  { emp: 'rivin', status: 'break', clockedIn: '09:05', hoursToday: 5.5, weekHours: 30.25, weekTarget: 40, currentProject: 'mip-2a' },
+  { emp: 'mehnas', status: 'working', clockedIn: '08:55', hoursToday: 6.5, weekHours: 33.75, weekTarget: 40, currentProject: 'mip-2c' },
+  { emp: 'elbin', status: 'leave', clockedIn: ' ', hoursToday: 0, weekHours: 24.0, weekTarget: 40, currentProject: null },
+];
+
+// Pending approvals
+const APPROVALS = [
+  { id: 'a1', type: 'timesheet', emp: 'sandra', label: 'Week of Apr 13   42.5 hrs', sub: 'Submitted Mon, Apr 20   2.5 hrs overtime' },
+  { id: 'a2', type: 'leave', emp: 'rivin', label: 'Annual leave   Apr 27 to Apr 30', sub: '4 days   Submitted Fri, Apr 17' },
+  { id: 'a3', type: 'timesheet', emp: 'elbin', label: 'Week of Apr 13   38 hrs', sub: 'Submitted Sun, Apr 19' },
+];
+
+// Project hour totals this week
+const PROJECT_TOTALS = [
+  { id: 'dch-f09', hours: 48.5, budget: 120, team: 3 },
+  { id: 'dch-f02', hours: 32.0, budget: 80, team: 2 },
+  { id: 'mip-2c', hours: 28.25, budget: 90, team: 2 },
+  { id: 'dch-f12', hours: 18.5, budget: 60, team: 1 },
+  { id: 'mip-2a', hours: 12.0, budget: 70, team: 1 },
+  { id: 'mip-2d', hours: 6.5, budget: 50, team: 1 },
+];
+
+// Daily totals for week-at-a-glance bar chart (Mon-Fri)
+const WEEK_DAILY_TOTALS = [38.5, 42.0, 40.5, 36.25, 18.0]; // Fri in progress
+
+window.DATA = {
+  PROJECTS, TASK_TYPES, EMPLOYEES, TODAY_ENTRIES, WEEK_DATA,
+  TEAM_TODAY, APPROVALS, PROJECT_TOTALS, WEEK_DAILY_TOTALS,
+};
+
+
+
+
+// ======== auth.jsx ========
+
+// --- Auth store (localStorage-backed) ---
+// Seed users. Manager (admin) can add/reset passwords.
+const AUTH_KEY = 'nla_users_v3';
+const SESSION_KEY = 'nla_session_v1';
+const RESET_KEY = 'nla_resets_v1';
+
+const SEED_USERS = [
+  { id: 'admin', username: 'admin', password: 'admin123', name: 'Sanil', role: 'Studio Director', type: 'manager', initials: 'SN', tz: 'Asia/Dubai', tzLabel: 'UAE' },
+  { id: 'sanil', username: 'sanil', password: 'welcome123', name: 'Sanil', role: 'Studio Manager', type: 'manager', initials: 'SN', tz: 'Asia/Dubai', tzLabel: 'UAE' },
+  { id: 'adithya', username: 'adithya', password: 'welcome123', name: 'Adithya', role: 'Studio Manager', type: 'manager', initials: 'AD', tz: 'Asia/Kolkata', tzLabel: 'IST' },
+  { id: 'afsal', username: 'afsal', password: 'welcome123', name: 'Afsal Badrudeen', role: 'BIM Architect', type: 'employee', initials: 'AB', tz: 'Asia/Dubai', tzLabel: 'UAE' },
+  { id: 'sandra', username: 'sandra', password: 'welcome123', name: 'Sandra', role: 'BIM Architect', type: 'employee', initials: 'SA', tz: 'Asia/Dubai', tzLabel: 'UAE' },
+  { id: 'rivin', username: 'rivin', password: 'welcome123', name: 'Rivin Wilson', role: 'BIM Engineer', type: 'employee', initials: 'RW', tz: 'Asia/Kolkata', tzLabel: 'IST' },
+  { id: 'mehnas', username: 'mehnas', password: 'welcome123', name: 'Mehnas N Manzoor', role: 'BIM Engineer', type: 'employee', initials: 'MM', tz: 'Asia/Dubai', tzLabel: 'UAE' },
+  { id: 'elbin', username: 'elbin', password: 'welcome123', name: 'Elbin Paulose', role: 'BIM Engineer', type: 'employee', initials: 'EP', tz: 'Asia/Kolkata', tzLabel: 'IST' },
+];
+
+const Auth = {
+  getUsers() {
+    try {
+      const raw = localStorage.getItem(AUTH_KEY);
+      if (!raw) {
+        localStorage.setItem(AUTH_KEY, JSON.stringify(SEED_USERS));
+        return SEED_USERS;
+      }
+      return JSON.parse(raw);
+    } catch { return SEED_USERS; }
+  },
+  saveUsers(users) { localStorage.setItem(AUTH_KEY, JSON.stringify(users)); },
+  getSession() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+  },
+  setSession(user) { localStorage.setItem(SESSION_KEY, JSON.stringify(user)); },
+  clearSession() { localStorage.removeItem(SESSION_KEY); },
+  login(username, password) {
+    const u = Auth.getUsers().find(x => x.username.toLowerCase() === username.toLowerCase());
+    if (!u) return { ok: false, error: 'No account found with that username.' };
+    if (u.password !== password) return { ok: false, error: 'Incorrect password.' };
+    Auth.setSession(u);
+    // Sync profile to Supabase in background
+    if (window.SupaProfiles) window.SupaProfiles.upsert(u);
+    return { ok: true, user: u };
+  },
+  addUser(u) {
+    const users = Auth.getUsers();
+    if (users.find(x => x.username.toLowerCase() === u.username.toLowerCase())) {
+      return { ok: false, error: 'Username already exists.' };
+    }
+    const id = u.username.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const initials = u.name.split(/\s+/).map(s => s[0]).join('').slice(0,2).toUpperCase();
+    const newUser = { ...u, id, initials };
+    users.push(newUser);
+    Auth.saveUsers(users);
+    // Sync to Supabase immediately
+    if (window.SupaProfiles) {
+      window.SupaProfiles.upsert({
+        id, username: u.username, name: u.name,
+        role: u.role || '', type: u.type || 'employee',
+        initials, tz: u.tz || 'Asia/Dubai', tzLabel: u.tzLabel || 'UAE',
+      });
+      // Also sync password
+      if (window.SupaPasswords && u.password) {
+        window.SupaPasswords.update(id, u.password);
+      }
+    }
+    return { ok: true };
+  },
+  updatePassword(id, newPassword) {
+    const users = Auth.getUsers();
+    const u = users.find(x => x.id === id);
+    if (!u) return { ok: false };
+    u.password = newPassword;
+    Auth.saveUsers(users);
+    // Sync to Supabase   profiles table password column
+    if (window.sb) {
+      window.sb.from('profiles').update({ password: newPassword }).eq('id', id).then(({ error }) => {
+        if (error) console.warn('Supabase updatePassword error:', error.message);
+        else console.log('Password synced to Supabase for:', id);
+      });
+    }
+    return { ok: true };
+  },
+  removeUser(id) {
+    const users = Auth.getUsers().filter(x => x.id !== id);
+    Auth.saveUsers(users);
+    // Remove from Supabase
+    if (window.sb) {
+      window.sb.from('profiles').delete().eq('id', id).then(({ error }) => {
+        if (error) console.warn('Supabase removeUser error:', error.message);
+      });
+    }
+  },
+  updateUser(id, patch) {
+    const users = Auth.getUsers();
+    const u = users.find(x => x.id === id);
+    if (!u) return { ok: false };
+    Object.assign(u, patch);
+    // Keep tzLabel in sync with tz when tz changes
+    if (patch.tz && !patch.tzLabel) {
+      u.tzLabel = patch.tz === 'Asia/Dubai' ? 'UAE'
+                : patch.tz === 'Asia/Kolkata' ? 'IST'
+                : patch.tz === 'Europe/London' ? 'UK'
+                : patch.tz === 'America/New_York' ? 'EST'
+                : u.tzLabel || 'UAE';
+    }
+    Auth.saveUsers(users);
+    return { ok: true };
+  },
+  // Password reset requests (forgot password flow)
+  getResets() {
+    try { return JSON.parse(localStorage.getItem(RESET_KEY)) || []; } catch { return []; }
+  },
+  addReset(username) {
+    const resets = Auth.getResets();
+    resets.push({ id: `r${Date.now()}`, username, at: new Date().toISOString(), status: 'pending' });
+    localStorage.setItem(RESET_KEY, JSON.stringify(resets));
+  },
+  clearReset(id) {
+    const resets = Auth.getResets().filter(r => r.id !== id);
+    localStorage.setItem(RESET_KEY, JSON.stringify(resets));
+  },
+};
+
+window.Auth = Auth;
+
+// --- Login screen ---
+function LoginScreen({ onLogin }) {
+  const [username, setUsername] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [error, setError] = React.useState('');
+  const [success, setSuccess] = React.useState('');
+  const [forgot, setForgot] = React.useState(false);
+
+  const submit = (e) => {
+    e.preventDefault();
+    const r = Auth.login(username.trim(), password);
+    if (!r.ok) { setError(r.error); setSuccess(''); return; }
+    onLogin(r.user);
+  };
+
+  const sendReset = async (e) => {
+    e.preventDefault();
+    if (!username.trim()) { setError('Enter your username first.'); return; }
+
+    // Check username exists
+    const u = Auth.getUsers().find(x => x.username.toLowerCase() === username.trim().toLowerCase());
+    if (!u) { setError('No account found with that username.'); return; }
+
+    Auth.addReset(username.trim());
+
+    // Notify manager via EmailJS (browser-based, no server needed)
+    try {
+      const EMAILJS_SERVICE  = window.NLA_EMAILJS_SERVICE  || '';
+      const EMAILJS_TEMPLATE = window.NLA_EMAILJS_TEMPLATE || '';
+      const EMAILJS_KEY      = window.NLA_EMAILJS_KEY      || '';
+      if (EMAILJS_SERVICE && EMAILJS_TEMPLATE && EMAILJS_KEY) {
+        await window.emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE, {
+          to_email:      'sanil@naturelandscapearchitects.com',
+          to_name:       'Sanil',
+          employee_name: u.name,
+          username:      u.username,
+          request_time:  new Date().toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' UAE',
+          dashboard_url: 'https://nla-timesheet-5jc7.vercel.app',
+        }, EMAILJS_KEY);
+      }
+    } catch(err) {
+      console.warn('Email notification failed:', err);
+    }
+
+    setSuccess('Reset request sent. Sanil will be notified and will share your new password shortly.');
+    setError('');
+    setForgot(false);
+  };
+
+  return (
+    <div className="login-shell">
+      <div className="login-panel">
+        <div className="login-card">
+          <div className="brand">
+            <img src="assets/nature-logo.png" alt="Nature Landscape Architects" />
+          </div>
+          <h1>{forgot ? 'Reset your password' : 'Sign in'}</h1>
+          <p className="sub">
+            {forgot
+              ? 'Enter your username and we will ask admin to issue a new password.'
+              : 'Welcome back. Sign in to log your hours.'}
+          </p>
+
+          {error && <div className="login-error">{error}</div>}
+          {success && <div className="login-success">{success}</div>}
+
+          <form onSubmit={forgot ? sendReset : submit}>
+            <div className="field">
+              <label htmlFor="u">Username</label>
+              <input
+                id="u"
+                className="input"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoFocus
+                autoComplete="username"
+                placeholder="Username"
+              />
+            </div>
+            {!forgot && (
+              <div className="field">
+                <div className="field-row">
+                  <label htmlFor="p">Password</label>
+                  <a className="hint-link" onClick={(e) => { e.preventDefault(); setForgot(true); setError(''); setSuccess(''); }}>
+                    Forgot password?
+                  </a>
+                </div>
+                <input
+                  id="p"
+                  type="password"
+                  className="input"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  placeholder="Enter password"
+                />
+              </div>
+            )}
+            <button className="login-btn" disabled={!username || (!forgot && !password)}>
+              {forgot ? 'Send reset request' : 'Sign in'}
+            </button>
+            {forgot && (
+              <button
+                type="button"
+                className="btn"
+                style={{width: '100%', marginTop: 8, justifyContent: 'center'}}
+                onClick={() => { setForgot(false); setError(''); setSuccess(''); }}
+              >Back to sign in</button>
+            )}
+          </form>
+
+
+        </div>
+      </div>
+
+      <div className="login-hero">
+        <div>
+          <div className="hero-kicker">Timesheet   BIM Studio</div>
+          <h2>Effortless Work Logging</h2>
+          <p>
+            Built to work quietly alongside you, capturing your design time without
+            distractions or manual input. A seamless, unobtrusive experience that keeps
+            your workflow uninterrupted while ensuring your efforts are consistently reflected.
+          </p>
+        </div>
+        <div className="login-hero-footer">
+            2026 Nature Landscape Architects   Internal tool
+        </div>
+      </div>
+    </div>
+  );
+}
+
+window.LoginScreen = LoginScreen;
+
+// --- Change Password Modal -------------------------------------
+function ChangePasswordModal({ user, open, onClose }) {
+  const [current, setCurrent] = React.useState('');
+  const [newPw, setNewPw] = React.useState('');
+  const [confirm, setConfirm] = React.useState('');
+  const [error, setError] = React.useState('');
+  const [success, setSuccess] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [showCurrent, setShowCurrent] = React.useState(false);
+  const [showNew, setShowNew] = React.useState(false);
+
+  React.useEffect(() => {
+    if (open) { setCurrent(''); setNewPw(''); setConfirm(''); setError(''); setSuccess(''); }
+  }, [open]);
+
+  if (!open) return null;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError(''); setSuccess('');
+    if (!current) { setError('Enter your current password.'); return; }
+    if (newPw.length < 6) { setError('New password must be at least 6 characters.'); return; }
+    if (newPw !== confirm) { setError('New passwords do not match.'); return; }
+    if (current === newPw) { setError('New password must be different from current.'); return; }
+
+    setLoading(true);
+    // Verify current password
+    const u = Auth.getUsers().find(x => x.id === user.id);
+    if (!u || u.password !== current) {
+      setError('Current password is incorrect.');
+      setLoading(false);
+      return;
+    }
+    // Update locally + Supabase
+    Auth.updatePassword(user.id, newPw);
+    // Update session
+    const updated = { ...u, password: newPw };
+    Auth.setSession(updated);
+    setSuccess('Password changed successfully!');
+    setLoading(false);
+    setCurrent(''); setNewPw(''); setConfirm('');
+    setTimeout(onClose, 1500);
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth: 420}}>
+        <div style={{padding: '22px 28px 12px', borderBottom: '1px solid var(--border)'}}>
+          <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
+            <div style={{
+              width: 38, height: 38, borderRadius: 9,
+              background: 'rgba(16,35,71,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--brand-navy)',
+            }}>
+              <Icon name="eye" size={18}/>
+            </div>
+            <div>
+              <h3 style={{margin: 0, fontSize: 15}}>Change password</h3>
+              <p style={{margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)'}}>
+                {user.name}   {user.username}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={submit} style={{padding: '20px 28px 24px'}}>
+          {error && <div className="auth-error" style={{marginBottom: 12}}>{error}</div>}
+          {success && <div className="login-success" style={{marginBottom: 12}}>{success}</div>}
+
+          <div className="field" style={{marginBottom: 12}}>
+            <label>Current password</label>
+            <div style={{position: 'relative'}}>
+              <input
+                type={showCurrent ? 'text' : 'password'}
+                className="input"
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+                placeholder="Your current password"
+                autoFocus
+              />
+              <button type="button" onClick={() => setShowCurrent(!showCurrent)}
+                style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',
+                  background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',fontSize:11}}>
+                {showCurrent ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+
+          <div className="field" style={{marginBottom: 12}}>
+            <label>New password</label>
+            <div style={{position: 'relative'}}>
+              <input
+                type={showNew ? 'text' : 'password'}
+                className="input"
+                value={newPw}
+                onChange={(e) => setNewPw(e.target.value)}
+                placeholder="Min. 6 characters"
+              />
+              <button type="button" onClick={() => setShowNew(!showNew)}
+                style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',
+                  background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',fontSize:11}}>
+                {showNew ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+
+          <div className="field" style={{marginBottom: 16}}>
+            <label>Confirm new password</label>
+            <input
+              type="password"
+              className="input"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="Repeat new password"
+            />
+          </div>
+
+          <div style={{display: 'flex', gap: 8, justifyContent: 'flex-end'}}>
+            <button type="button" className="btn" onClick={onClose}>Cancel</button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={loading || !current || !newPw || !confirm}
+            >
+              {loading ? 'Saving ' : 'Change password'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+window.ChangePasswordModal = ChangePasswordModal;
+
+
+
+
+
+// ======== auth-components.jsx ========
+
+// --- Activity / idle detection hook ---
+// Mimics Autodesk Revit/AutoCAD time-tracking behavior:
+// - tracks mouse move, click, key, wheel, scroll
+// - after IDLE_THRESHOLD of inactivity, marks session idle and pauses the "active" counter
+// - "total" counter keeps running (wall clock) while clocked in
+// - returns { active, idle, totalElapsed, activeElapsed, idleSeconds, lastActivityAt }
+
+function useActivityTracker({ enabled, idleThresholdSec = 120 }) {
+  const [active, setActive] = React.useState(true);
+  const [lastActivityAt, setLastActivityAt] = React.useState(Date.now());
+  const [totalElapsed, setTotalElapsed] = React.useState(0);
+  const [activeElapsed, setActiveElapsed] = React.useState(0);
+  const lastTick = React.useRef(Date.now());
+  const lastAct = React.useRef(Date.now());
+
+  React.useEffect(() => {
+    if (!enabled) return;
+    const bump = () => {
+      lastAct.current = Date.now();
+      setLastActivityAt(Date.now());
+      setActive(true);
+    };
+    const evs = ['mousemove', 'mousedown', 'keydown', 'wheel', 'scroll', 'touchstart'];
+    evs.forEach(e => window.addEventListener(e, bump, { passive: true }));
+    return () => evs.forEach(e => window.removeEventListener(e, bump));
+  }, [enabled]);
+
+  React.useEffect(() => {
+    if (!enabled) return;
+    lastTick.current = Date.now();
+    lastAct.current = Date.now();
+    const t = setInterval(() => {
+      const now = Date.now();
+      const dt = (now - lastTick.current) / 1000;
+      lastTick.current = now;
+      const sinceAct = (now - lastAct.current) / 1000;
+      const isIdle = sinceAct >= idleThresholdSec;
+      setActive(!isIdle);
+      setTotalElapsed(e => e + dt);
+      if (!isIdle) setActiveElapsed(e => e + dt);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [enabled, idleThresholdSec]);
+
+  const idleSeconds = Math.max(0, (Date.now() - lastActivityAt) / 1000);
+  return { active, idle: !active, totalElapsed, activeElapsed, idleSeconds };
+}
+
+window.useActivityTracker = useActivityTracker;
+
+// --- User menu (topbar dropdown) ---
+function UserMenu({ user, onLogout, onSwitchView }) {
+  const [open, setOpen] = React.useState(false);
+  const [changePwOpen, setChangePwOpen] = React.useState(false);
+  const ref = React.useRef();
+  React.useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  return (
+    <>
+      <div className="user-menu" ref={ref}>
+        <button className="user-menu-trigger" onClick={() => setOpen(!open)}>
+          <div className="avatar">{user.initials}</div>
+          <div className="name">{user.name.split(' ')[0]}</div>
+          <Icon name="chevronR" size={14}/>
+        </button>
+        {open && (
+          <div className="user-menu-pop">
+            <div className="who-block">
+              <div className="n">{user.name}</div>
+              <div className="e">{user.role}   @{user.username}</div>
+            </div>
+            <button onClick={() => { setOpen(false); setChangePwOpen(true); }}>
+              <Icon name="eye" size={14}/> Change password
+            </button>
+            <button className="danger" onClick={() => { setOpen(false); onLogout(); }}>
+              <Icon name="x" size={14}/> Sign out
+            </button>
+          </div>
+        )}
+      </div>
+      {changePwOpen && window.ChangePasswordModal && React.createElement(window.ChangePasswordModal, {
+        user, open: changePwOpen, onClose: () => setChangePwOpen(false)
+      })}
+    </>
+  );
+}
+
+window.UserMenu = UserMenu;
+
+// --- Idle resume modal ---
+function IdleModal({ idleFor, onResume, onDiscard }) {
+  const mins = Math.floor(idleFor / 60);
+  return (
+    <div className="modal-backdrop">
+      <div className="modal">
+        <div className="modal-header">
+          <h3>You've been idle for {mins} min</h3>
+          <p>Your timer paused automatically, just like Revit's idle detection. Keep the idle time or discard it?</p>
+        </div>
+        <div className="modal-footer">
+          <button className="btn" onClick={onDiscard}>Discard idle time</button>
+          <button className="btn btn-primary" onClick={onResume}>Keep and resume</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+window.IdleModal = IdleModal;
+
+// Role presets + timezone presets   shared by the admin UI
+const ROLE_PRESETS = [
+  'Studio Director', 'Studio Manager', 'Project Manager',
+  'BIM Architect', 'BIM Engineer', 'BIM Modeler',
+  'Draughtsman', 'QA / QC', 'Intern',
+];
+const TZ_PRESETS = [
+  { tz: 'Asia/Dubai',      tzLabel: 'UAE', title: 'UAE (GMT+4)' },
+  { tz: 'Asia/Kolkata',    tzLabel: 'IST', title: 'India (GMT+5:30)' },
+  { tz: 'Europe/London',   tzLabel: 'UK',  title: 'United Kingdom (GMT+0/+1)' },
+  { tz: 'America/New_York',tzLabel: 'EST', title: 'US East (GMT-5/-4)' },
+  { tz: 'Asia/Singapore',  tzLabel: 'SG',  title: 'Singapore (GMT+8)' },
+];
+
+// --- Users admin panel (manager) ---
+function UsersAdmin() {
+  const [users, setUsers] = React.useState(Auth.getUsers());
+  const [resets, setResets] = React.useState(Auth.getResets());
+  const [adding, setAdding] = React.useState(false);
+  const [draft, setDraft] = React.useState({ username: '', name: '', role: 'BIM Engineer', type: 'employee', password: 'welcome123', tz: 'Asia/Dubai', tzLabel: 'UAE' });
+  const [resetFor, setResetFor] = React.useState(null);
+  const [newPw, setNewPw] = React.useState('');
+  const [revealed, setRevealed] = React.useState({}); // id -> bool
+  const [revealAll, setRevealAll] = React.useState(false);
+  const [deleteFor, setDeleteFor] = React.useState(null);
+  const [deleteConfirmText, setDeleteConfirmText] = React.useState('');
+
+  const session = Auth.getSession();
+  const selfId = session?.id;
+
+  const refresh = () => { setUsers(Auth.getUsers()); setResets(Auth.getResets()); };
+  const [syncing, setSyncing] = React.useState(false);
+  const [syncMsg, setSyncMsg] = React.useState('');
+
+  const syncAllToSupabase = async () => {
+    setSyncing(true);
+    setSyncMsg('Syncing...');
+    const allUsers = Auth.getUsers();
+    let count = 0;
+    for (const u of allUsers) {
+      try {
+        await window.SupaProfiles.upsert({
+          id: u.id, username: u.username, name: u.name,
+          role: u.role || '', type: u.type || 'employee',
+          initials: u.initials || u.name.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase(),
+          tz: u.tz || 'Asia/Dubai', tzLabel: u.tzLabel || 'UAE',
+        });
+        // Sync password too
+        if (u.password && window.sb) {
+          await window.sb.from('profiles').update({ password: u.password }).eq('id', u.id);
+        }
+        count++;
+      } catch(e) { console.warn('Sync error for', u.username, e); }
+    }
+    setSyncMsg(`Synced ${count}/${allUsers.length} users to Supabase`);
+    setSyncing(false);
+    setTimeout(() => setSyncMsg(''), 4000);
+  };
+
+  const toggleReveal = (id) => setRevealed(r => ({ ...r, [id]: !r[id] }));
+
+  const patchUser = (id, patch) => {
+    Auth.updateUser(id, patch);
+    refresh();
+  };
+
+  const confirmDelete = () => {
+    if (deleteConfirmText.trim().toLowerCase() !== deleteFor.username.toLowerCase()) return;
+    Auth.removeUser(deleteFor.id);
+    setDeleteFor(null);
+    setDeleteConfirmText('');
+    refresh();
+  };
+
+  const save = () => {
+    const r = Auth.addUser(draft);
+    if (!r.ok) { alert(r.error); return; }
+    setAdding(false);
+    setDraft({ username: '', name: '', role: 'BIM Engineer', type: 'employee', password: 'welcome123', tz: 'Asia/Dubai', tzLabel: 'UAE' });
+    refresh();
+  };
+
+  const doReset = () => {
+    if (!newPw || newPw.length < 6) { alert('Password must be at least 6 characters.'); return; }
+    Auth.updatePassword(resetFor.id, newPw);
+    // clear any pending reset requests for this user
+    Auth.getResets().filter(r => r.username === resetFor.username).forEach(r => Auth.clearReset(r.id));
+    setResetFor(null);
+    setNewPw('');
+    refresh();
+    alert(`Password for ${resetFor.name} was reset. Please share the new password privately.`);
+  };
+
+  return (
+    <>
+      {resets.length > 0 && (
+        <div className="card" style={{marginBottom: 18}}>
+          <div className="card-header">
+            <div>
+              <h3 className="card-title">Password reset requests</h3>
+              <div className="card-sub">{resets.length} pending   click "Reset password" to issue a new one</div>
+            </div>
+          </div>
+          {resets.map(r => {
+            const u = users.find(x => x.username.toLowerCase() === r.username.toLowerCase());
+            return (
+              <div key={r.id} className="request">
+                <div className="avatar">{u?.initials || '?'}</div>
+                <div className="req-body">
+                  <p className="req-title">{u?.name || r.username} requested a password reset</p>
+                  <p className="req-sub">@{r.username}   {new Date(r.at).toLocaleString()}</p>
+                </div>
+                <div className="req-actions">
+                  <button className="btn btn-sm" onClick={() => { Auth.clearReset(r.id); refresh(); }}>Dismiss</button>
+                  <button className="btn btn-sm btn-primary" onClick={() => u && setResetFor(u)}>Reset password</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-header">
+          <div>
+            <h3 className="card-title">User accounts</h3>
+            <div className="card-sub">{users.length} users   manage logins, roles, timezones & passwords</div>
+          </div>
+          <div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
+            <button
+              className="btn btn-sm"
+              onClick={() => setRevealAll(v => !v)}
+              title={revealAll ? 'Hide all passwords' : 'Reveal all passwords'}
+            >
+              <Icon name={revealAll ? 'eyeOff' : 'eye'} size={14}/>
+              {revealAll ? 'Hide passwords' : 'Show passwords'}
+            </button>
+            <button className="btn btn-sm" onClick={syncAllToSupabase} disabled={syncing}
+              style={{fontSize:12,color:'#1d8a4a',borderColor:'#1d8a4a'}}
+              title="Fix missing users in Supabase">
+              {syncing ? 'Syncing...' : 'Sync   Supabase'}
+            </button>
+            {syncMsg && <span style={{fontSize:11,color:'#1d8a4a'}}>{syncMsg}</span>}
+            <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Icon name="plus" size={14}/> Add user</button>
+          </div>
+        </div>
+
+        <div style={{overflowX: 'auto'}}>
+          <table className="users-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Access</th>
+                <th>Timezone</th>
+                <th style={{minWidth: 180}}>Password</th>
+                <th style={{width: 150, textAlign: 'right'}}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(u => {
+                const isSelf = u.id === selfId;
+                const show = revealAll || revealed[u.id];
+                return (
+                  <tr key={u.id}>
+                    <td>
+                      <div className="team-cell-emp">
+                        <div className="avatar">{u.initials}</div>
+                        <div>
+                          <div className="name">{u.name}{isSelf && <span className="badge" style={{marginLeft: 8, fontSize: 10}}>You</span>}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td><code>{u.username}</code></td>
+                    <td>
+                      <select
+                        className="select select-inline"
+                        value={ROLE_PRESETS.includes(u.role) ? u.role : '__custom__'}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === '__custom__') {
+                            const r = prompt('Custom role title', u.role);
+                            if (r && r.trim()) patchUser(u.id, { role: r.trim() });
+                          } else {
+                            patchUser(u.id, { role: v });
+                          }
+                        }}
+                      >
+                        {ROLE_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
+                        {!ROLE_PRESETS.includes(u.role) && <option value={u.role}>{u.role}</option>}
+                        <option value="__custom__">Custom </option>
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        className="select select-inline"
+                        value={u.type}
+                        disabled={isSelf}
+                        title={isSelf ? "You can't change your own access level" : 'Change access level'}
+                        onChange={(e) => patchUser(u.id, { type: e.target.value })}
+                      >
+                        <option value="employee">Employee</option>
+                        <option value="manager">Admin / Manager</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        className="select select-inline"
+                        value={u.tz || 'Asia/Dubai'}
+                        onChange={(e) => {
+                          const preset = TZ_PRESETS.find(p => p.tz === e.target.value);
+                          patchUser(u.id, { tz: e.target.value, tzLabel: preset?.tzLabel || u.tzLabel });
+                        }}
+                      >
+                        {TZ_PRESETS.map(p => <option key={p.tz} value={p.tz}>{p.tzLabel}   {p.title}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <div className="pw-cell">
+                        <code className={`pw-dots ${show ? 'shown' : ''}`}>
+                          {show ? u.password : '        '}
+                        </code>
+                        <button
+                          className="btn-icon"
+                          onClick={() => toggleReveal(u.id)}
+                          title={show ? 'Hide password' : 'Show password'}
+                        >
+                          <Icon name={show ? 'eyeOff' : 'eye'} size={14}/>
+                        </button>
+                        <button
+                          className="btn-icon"
+                          onClick={() => { navigator.clipboard?.writeText(u.password); }}
+                          title="Copy password"
+                        >
+                          <Icon name="copy" size={14}/>
+                        </button>
+                      </div>
+                    </td>
+                    <td style={{textAlign: 'right', whiteSpace: 'nowrap'}}>
+                      <button className="btn btn-sm" onClick={() => setResetFor(u)} title="Issue a new password">
+                        <Icon name="key" size={13}/> Reset
+                      </button>
+                      <button
+                        className="btn btn-sm btn-danger-ghost"
+                        style={{marginLeft: 6}}
+                        onClick={() => setDeleteFor(u)}
+                        disabled={isSelf}
+                        title={isSelf ? "You can't delete your own account" : 'Delete user'}
+                      >
+                        <Icon name="trash" size={13}/>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {adding && (
+        <div className="modal-backdrop" onClick={() => setAdding(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Add user</h3>
+              <p>Create a login for a new team member.</p>
+            </div>
+            <div className="modal-body">
+              <div className="field">
+                <label>Full name</label>
+                <input className="input" value={draft.name} onChange={(e) => setDraft({...draft, name: e.target.value})} placeholder="e.g. Maya Joseph" />
+              </div>
+              <div className="field">
+                <label>Username (for login)</label>
+                <input className="input" value={draft.username} onChange={(e) => setDraft({...draft, username: e.target.value.toLowerCase()})} placeholder="e.g. maya" />
+              </div>
+              <div className="field">
+                <label>Role</label>
+                <select
+                  className="select"
+                  value={ROLE_PRESETS.includes(draft.role) ? draft.role : '__custom__'}
+                  onChange={(e) => {
+                    if (e.target.value === '__custom__') {
+                      const r = prompt('Custom role title', draft.role || 'BIM Engineer');
+                      if (r && r.trim()) setDraft({...draft, role: r.trim()});
+                    } else {
+                      setDraft({...draft, role: e.target.value});
+                    }
+                  }}
+                >
+                  {ROLE_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
+                  {!ROLE_PRESETS.includes(draft.role) && draft.role && <option value={draft.role}>{draft.role}</option>}
+                  <option value="__custom__">Custom </option>
+                </select>
+              </div>
+              <div className="field">
+                <label>Access level</label>
+                <select className="select" value={draft.type} onChange={(e) => setDraft({...draft, type: e.target.value})}>
+                  <option value="employee">Employee</option>
+                  <option value="manager">Admin / Manager</option>
+                </select>
+              </div>
+              <div className="field">
+                <label>Timezone</label>
+                <select className="select" value={draft.tz || 'Asia/Dubai'} onChange={(e) => {
+                  const preset = TZ_PRESETS.find(p => p.tz === e.target.value);
+                  setDraft({...draft, tz: e.target.value, tzLabel: preset?.tzLabel || 'UAE'});
+                }}>
+                  {TZ_PRESETS.map(p => <option key={p.tz} value={p.tz}>{p.tzLabel}   {p.title}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label>Initial password</label>
+                <input className="input" value={draft.password} onChange={(e) => setDraft({...draft, password: e.target.value})} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setAdding(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={save} disabled={!draft.name || !draft.username || !draft.password}>Create user</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resetFor && (
+        <div className="modal-backdrop" onClick={() => setResetFor(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Reset password for {resetFor.name}</h3>
+              <p>Enter a new password. Share it privately with the user; they can change it after they log in.</p>
+            </div>
+            <div className="modal-body">
+              <div className="field">
+                <label>New password</label>
+                <input className="input" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="min 6 characters" autoFocus />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => { setResetFor(null); setNewPw(''); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={doReset}>Reset password</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {deleteFor && (
+        <div className="modal-backdrop" onClick={() => { setDeleteFor(null); setDeleteConfirmText(''); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{color: 'var(--danger)'}}>Delete {deleteFor.name}?</h3>
+              <p>
+                This permanently removes the account, their login, and ongoing access.
+                Their historical timesheets remain for the record.
+              </p>
+            </div>
+            <div className="modal-body">
+              <div className="delete-summary">
+                <div className="avatar lg">{deleteFor.initials}</div>
+                <div>
+                  <div style={{fontWeight: 600}}>{deleteFor.name}</div>
+                  <div style={{color: 'var(--text-muted)', fontSize: 12.5}}>
+                    @{deleteFor.username}   {deleteFor.role}   {deleteFor.tzLabel}
+                  </div>
+                </div>
+              </div>
+              <div className="field" style={{marginTop: 14}}>
+                <label>Type the username <code>{deleteFor.username}</code> to confirm</label>
+                <input
+                  className="input"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder={deleteFor.username}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => { setDeleteFor(null); setDeleteConfirmText(''); }}>Cancel</button>
+              <button
+                className="btn btn-danger"
+                onClick={confirmDelete}
+                disabled={deleteConfirmText.trim().toLowerCase() !== deleteFor.username.toLowerCase()}
+              >
+                <Icon name="trash" size={14}/> Delete user
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+
+// -- Notifications Panel ----------------------------------------
+function NotificationsPanel({ user, open, onClose }) {
+  const [notifs, setNotifs] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!open || !user?.id) return;
+    setLoading(true);
+    window.SupaNotifications.getForUser(user.id).then(data => {
+      setNotifs(data);
+      setLoading(false);
+      // Mark all as read after opening
+      window.SupaNotifications.markRead(user.id);
+    }).catch(() => setLoading(false));
+  }, [open, user?.id]);
+
+  if (!open) return null;
+
+  const icon = (type) => {
+    if (type === 'approved') return { bg: 'rgba(29,138,74,0.12)', color: '#1d8a4a', symbol: ' ' };
+    if (type === 'rejected') return { bg: 'rgba(165,40,34,0.10)', color: '#a52822', symbol: ' ' };
+    return { bg: 'rgba(16,35,71,0.08)', color: '#102347', symbol: ' ' };
+  };
+
+  const fmtDate = (iso) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMin = Math.round((now - d) / 60000);
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffH = Math.round(diffMin / 60);
+    if (diffH < 24) return `${diffH}h ago`;
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth: 400, marginTop: 60, marginRight: 20, marginLeft: 'auto'}}>
+        <div style={{padding: '18px 24px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+          <h3 style={{margin: 0, fontSize: 15}}>Notifications</h3>
+          <button onClick={onClose} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text-muted)', lineHeight: 1}}>&times;</button>
+        </div>
+
+        <div style={{maxHeight: 420, overflowY: 'auto'}}>
+          {loading ? (
+            <div style={{padding: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>Loading </div>
+          ) : notifs.length === 0 ? (
+            <div style={{padding: '40px 24px', textAlign: 'center'}}>
+              <div style={{fontSize: 32, marginBottom: 10}}> </div>
+              <p style={{margin: 0, color: 'var(--text-muted)', fontSize: 13}}>No notifications yet.</p>
+              <p style={{margin: '4px 0 0', color: 'var(--text-faint)', fontSize: 12}}>You will be notified when timesheets are approved or rejected.</p>
+            </div>
+          ) : notifs.map(n => {
+            const ic = icon(n.type);
+            return (
+              <div key={n.id} style={{
+                display: 'flex', gap: 12, padding: '14px 24px',
+                borderBottom: '1px solid var(--border)',
+                background: n.read ? 'transparent' : 'rgba(16,35,71,0.03)',
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+                  background: ic.bg, color: ic.color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 16, fontWeight: 700,
+                }}>{ic.symbol}</div>
+                <div style={{flex: 1, minWidth: 0}}>
+                  <div style={{fontSize: 13, fontWeight: n.read ? 400 : 600, color: 'var(--text)'}}>{n.title}</div>
+                  {n.message && <div style={{fontSize: 12, color: 'var(--text-muted)', marginTop: 2}}>{n.message}</div>}
+                  <div style={{fontSize: 11, color: 'var(--text-faint)', marginTop: 4}}>{fmtDate(n.created_at)}</div>
+                </div>
+                {!n.read && <div style={{width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, marginTop: 4}}/>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+window.NotificationsPanel = NotificationsPanel;
+
+// -- Settings Modal ---------------------------------------------
+function SettingsModal({ user, open, onClose }) {
+  const [tab, setTab] = React.useState('profile');
+  const [changePwOpen, setChangePwOpen] = React.useState(false);
+  const [tz, setTz] = React.useState(user?.tz || 'Asia/Dubai');
+  const [saved, setSaved] = React.useState(false);
+
+  React.useEffect(() => {
+    if (open) { setTab('profile'); setSaved(false); }
+  }, [open]);
+
+  if (!open) return null;
+
+  const TZ_OPTIONS = [
+    { tz: 'Asia/Dubai',    label: 'UAE (GST +4)' },
+    { tz: 'Asia/Kolkata',  label: 'India (IST +5:30)' },
+    { tz: 'Europe/London', label: 'UK (GMT/BST)' },
+    { tz: 'America/New_York', label: 'US East (EST/EDT)' },
+  ];
+
+  const saveProfile = () => {
+    Auth.updateUser(user.id, { tz, tzLabel: TZ_OPTIONS.find(t => t.tz === tz)?.label?.split(' ')[0] || 'UAE' });
+    const updated = Auth.getUsers().find(u => u.id === user.id);
+    if (updated) Auth.setSession(updated);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <>
+      <div className="modal-backdrop" onClick={onClose}>
+        <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth: 460}}>
+          <div style={{padding: '20px 28px 0', borderBottom: '1px solid var(--border)'}}>
+            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16}}>
+              <h3 style={{margin: 0, fontSize: 15}}>Settings</h3>
+              <button onClick={onClose} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text-muted)', lineHeight: 1}}>&times;</button>
+            </div>
+            <div style={{display: 'flex', gap: 0}}>
+              {[['profile','Profile'],['security','Security']].map(([id, label]) => (
+                <button key={id} onClick={() => setTab(id)} style={{
+                  padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
+                  fontSize: 13, fontWeight: tab === id ? 600 : 400,
+                  color: tab === id ? 'var(--accent)' : 'var(--text-muted)',
+                  borderBottom: tab === id ? '2px solid var(--accent)' : '2px solid transparent',
+                  marginBottom: -1,
+                }}>{label}</button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{padding: '24px 28px'}}>
+            {tab === 'profile' && (
+              <>
+                {/* User info (read-only) */}
+                <div style={{display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, padding: '14px 16px', background: 'var(--surface-muted)', borderRadius: 9}}>
+                  <div style={{width: 44, height: 44, borderRadius: 10, background: 'rgba(16,35,71,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 15, color: 'var(--brand-navy)'}}>
+                    {user.initials}
+                  </div>
+                  <div>
+                    <div style={{fontWeight: 600, fontSize: 14}}>{user.name}</div>
+                    <div style={{fontSize: 12, color: 'var(--text-muted)'}}>{user.role}   @{user.username}</div>
+                  </div>
+                </div>
+
+                {/* Timezone */}
+                <div className="field" style={{marginBottom: 16}}>
+                  <label>Timezone</label>
+                  <select className="input select" value={tz} onChange={(e) => setTz(e.target.value)}>
+                    {TZ_OPTIONS.map(t => (
+                      <option key={t.tz} value={t.tz}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {saved && <div className="login-success" style={{marginBottom: 12}}>Settings saved!</div>}
+
+                <div style={{display: 'flex', gap: 8, justifyContent: 'flex-end'}}>
+                  <button className="btn" onClick={onClose}>Cancel</button>
+                  <button className="btn btn-primary" onClick={saveProfile}>Save changes</button>
+                </div>
+              </>
+            )}
+
+            {tab === 'security' && (
+              <>
+                <div style={{marginBottom: 20}}>
+                  <div style={{fontSize: 14, fontWeight: 600, marginBottom: 4}}>Password</div>
+                  <div style={{fontSize: 13, color: 'var(--text-muted)', marginBottom: 12}}>
+                    Change your login password. You will need your current password.
+                  </div>
+                  <button className="btn btn-primary" onClick={() => { onClose(); setChangePwOpen(true); }}>
+                    Change password
+                  </button>
+                </div>
+
+                <div style={{borderTop: '1px solid var(--border)', paddingTop: 20}}>
+                  <div style={{fontSize: 14, fontWeight: 600, marginBottom: 4}}>Session</div>
+                  <div style={{fontSize: 13, color: 'var(--text-muted)', marginBottom: 12}}>
+                    Signed in as <strong>{user.username}</strong>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {changePwOpen && window.ChangePasswordModal && React.createElement(window.ChangePasswordModal, {
+        user, open: changePwOpen, onClose: () => setChangePwOpen(false)
+      })}
+    </>
+  );
+}
+
+window.SettingsModal = SettingsModal;
+
+
+
+
+// ======== chrome.jsx ========
+
+const { useState, useEffect, useMemo } = React;
+
+function Sidebar({ view, activeNav, setActiveNav, user, onSettings, onNotifications }) {
+  const employeeNav = [
+    { id: 'dashboard',  label: 'Dashboard',    icon: 'home' },
+    { id: 'timesheet',  label: 'My Timesheet', icon: 'clock' },
+    { id: 'projects',   label: 'Projects',     icon: 'briefcase' },
+    { id: 'leave',      label: 'Leave',        icon: 'calendar' },
+  ];
+  const managerNav = [
+    { id: 'overview', label: 'Team Overview', icon: 'home' },
+    { id: 'activity', label: 'Activity Monitor', icon: 'pulse' },
+    { id: 'approvals', label: 'Approvals', icon: 'check', count: 3 },
+    { id: 'projects', label: 'Projects', icon: 'briefcase' },
+    { id: 'reports', label: 'Reports', icon: 'chart' },
+    { id: 'users', label: 'Users & Access', icon: 'users' },
+  ];
+  const nav = view === 'employee' ? employeeNav : managerNav;
+
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-logo">
+        <img src="assets/nature-logo.png" alt="Nature Landscape Architects" />
+      </div>
+
+      <div className="sidebar-section-label">
+        {view === 'employee' ? 'Workspace' : 'Management'}
+      </div>
+
+      {nav.map(n => (
+        <button
+          key={n.id}
+          className={`nav-item ${activeNav === n.id ? 'active' : ''}`}
+          onClick={() => setActiveNav(n.id)}
+        >
+          <Icon name={n.icon} />
+          {n.label}
+          {n.count && <span className="nav-count">{n.count}</span>}
+        </button>
+      ))}
+
+      <div className="sidebar-section-label">Account</div>
+      <button className="nav-item" onClick={() => onNotifications && onNotifications()}>
+        <Icon name="bell" /> Notifications
+      </button>
+      <button className="nav-item" onClick={() => onSettings && onSettings()}>
+        <Icon name="settings" /> Settings
+      </button>
+
+      <div className="sidebar-user">
+        <div className="avatar">{user?.initials || ' '}</div>
+        <div>
+          <div className="who">{user?.name || ''}</div>
+          <div className="role">{user?.role || ''}</div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function Topbar({ view, setView, title, subtitle, actions, canSwitchView, user }) {
+  const [now, setNow] = React.useState(new Date());
+  React.useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const tz = user?.tz || 'Asia/Dubai';
+  const tzLabel = user?.tzLabel || 'UAE';
+  const timeStr = now.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+  const dateStr = now.toLocaleDateString('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' });
+  return (
+    <div className="topbar">
+      <div>
+        <h1>{title}</h1>
+        <div className="subtitle">{subtitle}</div>
+      </div>
+      <div className="spacer" />
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
+        padding: '4px 14px', borderRight: '1px solid var(--border)', marginRight: 4,
+      }}>
+        <div style={{fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em', fontVariantNumeric: 'tabular-nums'}}>
+          {timeStr} <span style={{fontSize: 10.5, color: 'var(--text-muted)', marginLeft: 4, fontWeight: 500}}>{tzLabel}</span>
+        </div>
+        <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 1}}>{dateStr}</div>
+      </div>
+      {canSwitchView && setView && (
+        <div className="view-switch">
+          <button className={view === 'employee' ? 'on' : ''} onClick={() => setView('employee')}>Employee</button>
+          <button className={view === 'manager' ? 'on' : ''} onClick={() => setView('manager')}>Manager</button>
+        </div>
+      )}
+      {actions}
+    </div>
+  );
+}
+
+window.Sidebar = Sidebar;
+window.Topbar = Topbar;
+
+
+
+
+// ======== employee.jsx ========
+
+const { useState: useStateEmp, useEffect: useEffectEmp, useMemo: useMemoEmp } = React;
+
+function ClockCard({ clockState, setClockState, activity, user }) {
+  const [now, setNow] = useStateEmp(new Date());
+  useEffectEmp(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const tz = user?.tz || 'Asia/Dubai';
+  const tzLabel = user?.tzLabel || 'UAE';
+  const hourNow = parseInt(now.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', hour12: false }));
+  const minNow = parseInt(now.toLocaleTimeString('en-GB', { timeZone: tz, minute: '2-digit' }));
+  const isBreak = hourNow === 13; // 1:00 PM   2:00 PM
+  const beforeWork = hourNow < 8 || (hourNow === 8 && minNow < 30);
+  const afterWork = hourNow > 18 || (hourNow === 18 && minNow >= 30); // after 6:30 PM
+  const isOT = afterWork && clockState === 'working'; // overtime after 6:30 PM
+
+  const fmt = (s) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.floor(s % 60);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  };
+  const running = clockState === 'working';
+  const idleSec = Math.floor(activity.idleSeconds);
+  const showIdleLabel = running && activity.idle;
+  return (
+    <div className="clock-card">
+      <div style={{position: 'relative', zIndex: 2, minWidth: 0, flex: 1}}>
+        <div style={{display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap'}}>
+          <div className="clock-label" style={{margin: 0}}>Tracking   Dubai Creek Harbor F09</div>
+          <span className="activity-pill" style={{background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#c9d3e6'}}>
+            {now.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true })} {tzLabel}   Shift 8:30 AM 6:30 PM
+          </span>
+          {running && (
+            <span className={`activity-pill ${activity.idle ? 'idle' : ''}`}>
+              <span className="pulse"/>
+              {activity.idle ? `Idle   ${idleSec}s` : 'Active'}
+            </span>
+          )}
+          {isBreak && <span className="activity-pill idle"><span className="pulse"/>Lunch break   1:00 PM 2:00 PM</span>}
+          {isOT && <span className="activity-pill" style={{background:'rgba(186,117,23,0.2)',color:'#e8a020',border:'1px solid rgba(186,117,23,0.3)'}}><span className="pulse" style={{background:'#e8a020'}}/>Overtime</span>}
+        </div>
+        <div className="clock-time">{fmt(activity.activeElapsed)}</div>
+        <div className="clock-status">
+          <span className={`clock-dot ${running && !activity.idle ? '' : 'off'}`} />
+          {running && !activity.idle && 'Clocked in   Timer follows your activity'}
+          {showIdleLabel && 'Timer paused   move mouse or press a key to resume'}
+          {clockState === 'break' && 'On break   Lunch 1:00 PM 2:00 PM'}
+          {clockState === 'stopped' && 'Not clocked in'}
+        </div>
+        {running && (
+          <div className="activity-split">
+            <div className="activity-cell">
+              <div className="l">Active time</div>
+              <div className="v">{fmt(activity.activeElapsed)}</div>
+              <div className="sv">Counted toward timesheet</div>
+            </div>
+            <div className="activity-cell">
+              <div className="l">Total session</div>
+              <div className="v">{fmt(activity.totalElapsed)}</div>
+              <div className="sv">Wall clock since clock-in</div>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="clock-actions">
+        {clockState === 'stopped' ? (
+          <button className="clock-btn start" onClick={() => setClockState('working')}>
+            <Icon name="play" /> Clock in
+          </button>
+        ) : (
+          <>
+            <button className="clock-btn stop" onClick={() => setClockState('stopped')}>
+              <Icon name="pause" /> Clock out
+            </button>
+            <button className="clock-btn break" onClick={() => setClockState(clockState === 'break' ? 'working' : 'break')}>
+              <Icon name="coffee" /> {clockState === 'break' ? 'Resume' : 'Take break'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatCards({ featuresEnabled }) {
+  const stats = [
+    { label: 'Today', value: '0.00', unit: 'hrs', delta: 'Target 9h   8:30am 6:30pm (1h break)', deltaClass: '' },
+    { label: 'This week', value: ' ', unit: '/ 45 hrs', delta: 'Live from timesheet', deltaClass: '' },
+    { label: 'Overtime this month', value: '4.25', unit: 'hrs', delta: 'Within policy ( 8)', deltaClass: 'up' },
+    { label: 'Leave balance', value: '18', unit: 'days', delta: '2 pending request', deltaClass: '' },
+  ];
+  return (
+    <div className="stats-row">
+      {stats.map(s => (
+        <div key={s.label} className="card stat">
+          <div className="stat-label">{s.label}</div>
+          <div className="stat-value">{s.value}<span className="unit">{s.unit}</span></div>
+          <div className={`stat-delta ${s.deltaClass}`}>{s.delta}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TodayEntries({ entries, setEntries, userId }) {
+  const [draft, setDraft] = useStateEmp({ project: 'dch-f09', type: 'design', title: '', hours: '' });
+  const [saving, setSaving] = useStateEmp(false);
+  const total = entries.reduce((s, e) => s + e.hours, 0);
+
+  const addEntry = async () => {
+    if (!draft.title || !draft.hours) return;
+    const newEntry = {
+      project: draft.project,
+      type: draft.type,
+      title: draft.title,
+      notes: '',
+      hours: parseFloat(draft.hours),
+    };
+    setSaving(true);
+    // Save to Supabase
+    const saved = await window.SupaEntries.add(userId, newEntry);
+    if (saved) {
+      setEntries([...entries, { ...newEntry, id: saved.id }]);
+    } else {
+      // Fallback: save locally if Supabase fails
+      setEntries([...entries, { ...newEntry, id: `e${Date.now()}` }]);
+    }
+    setDraft({ project: draft.project, type: draft.type, title: '', hours: '' });
+    setSaving(false);
+  };
+
+  const removeEntry = async (id) => {
+    setEntries(entries.filter(e => e.id !== id));
+    await window.SupaEntries.remove(id);
+  };
+
+  const projById = (id) => window.DATA.PROJECTS.find(p => p.id === id);
+  const typeById = (id) => window.DATA.TASK_TYPES.find(t => t.id === id);
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div>
+          <h3 className="card-title">Today   Monday, April 20</h3>
+          <div className="card-sub">Working hours 8:30 AM 6:30 PM   Lunch 1:00 PM 2:00 PM   OT after 6:30 PM</div>
+        </div>
+        <div style={{display: 'flex', gap: 6}}>
+          <button className="btn btn-sm"><Icon name="filter" size={14}/> Filter</button>
+        </div>
+      </div>
+
+      <div className="entries">
+        {entries.map(e => {
+          const p = projById(e.project);
+          const t = typeById(e.type);
+          return (
+            <div key={e.id} className="entry-row">
+              <div className="entry-icon">{p?.code?.split('-')[0]?.substring(0,2)}</div>
+              <div>
+                <p className="entry-title">{e.title}</p>
+                {e.notes && <p className="entry-notes">{e.notes}</p>}
+              </div>
+              <div>
+                <div className="entry-project">{p?.name}</div>
+                <span className={`entry-tag ${t?.cls}`} style={{marginTop: 4, display: 'inline-block'}}>{t?.label}</span>
+              </div>
+              <div className="entry-hours">{e.hours.toFixed(2)}h</div>
+              <div />
+              <button className="entry-menu" onClick={() => removeEntry(e.id)}><Icon name="x" size={14}/></button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="add-entry">
+        <input
+          className="input"
+          placeholder="What did you work on? e.g. Revit hardscape modeling"
+          value={draft.title}
+          onChange={(e) => setDraft({...draft, title: e.target.value})}
+          onKeyDown={(e) => e.key === 'Enter' && addEntry()}
+        />
+        <select className="select" value={draft.project} onChange={(e) => setDraft({...draft, project: e.target.value})}>
+          {window.DATA.PROJECTS.map(p => <option key={p.id} value={p.id}>{p.code}   {p.name}</option>)}
+        </select>
+        <input
+          className="input"
+          type="number"
+          step="0.25"
+          placeholder="0.00"
+          value={draft.hours}
+          onChange={(e) => setDraft({...draft, hours: e.target.value})}
+          onKeyDown={(e) => e.key === 'Enter' && addEntry()}
+          style={{textAlign: 'right', fontFamily: 'var(--font-mono)'}}
+        />
+        <button className="btn btn-primary" onClick={addEntry}><Icon name="plus" size={14}/> Add</button>
+      </div>
+
+      <div className="entries-footer">
+        <span style={{color: 'var(--text-muted)'}}>
+          {entries.length} {entries.length === 1 ? 'entry' : 'entries'}   Auto-saved
+        </span>
+        <span className="total">Today total: {total.toFixed(2)} hrs</span>
+      </div>
+    </div>
+  );
+}
+
+function WeeklyGrid({ user }) {
+  // -- Week date helpers --------------------------------------
+  const getWeekDates = (offset = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1) + offset * 7);
+    return Array.from({ length: 5 }, (_, i) => {
+      const day = new Date(d);
+      day.setDate(d.getDate() + i);
+      return day.toISOString().split('T')[0];
+    });
+  };
+
+  const fmtDayLabel = (iso) => {
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  };
+
+  const fmtWeekTitle = (dates) => {
+    const s = new Date(dates[0] + 'T00:00:00');
+    const e = new Date(dates[4] + 'T00:00:00');
+    return `Week of ${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}   ${e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+  };
+
+  // -- State --------------------------------------------------
+  const [weekOffset, setWeekOffset] = useStateEmp(0);
+  const [grid, setGrid] = useStateEmp([]); // [{project, projectName, client, hours:[0,0,0,0,0]}]
+  const [loading, setLoading] = useStateEmp(true);
+  const [submitted, setSubmitted] = useStateEmp(false);
+  const [submitting, setSubmitting] = useStateEmp(false);
+  const [saving, setSaving] = useStateEmp(false);
+
+  const dates = getWeekDates(weekOffset);
+  const today = new Date().toISOString().split('T')[0];
+  const isCurrentWeek = weekOffset === 0;
+
+  // -- Load week entries from Supabase ------------------------
+  useEffectEmp(() => {
+    if (!user?.id) return;
+    setLoading(true);
+    setGrid([]);
+
+    window.SupaEntries.forWeekGrid(user.id, dates[0]).then(entries => {
+      // Build project set from entries + DATA.PROJECTS
+      const projMap = {};
+      window.DATA.PROJECTS.forEach(p => {
+        projMap[p.id] = { project: p.id, projectName: p.name, client: p.client || '', hours: [0,0,0,0,0] };
+      });
+
+      // Also include projects that appear in entries but not in DATA.PROJECTS
+      entries.forEach(e => {
+        if (!projMap[e.project_id]) {
+          projMap[e.project_id] = { project: e.project_id, projectName: e.project_name || e.project_id, client: '', hours: [0,0,0,0,0] };
+        }
+      });
+
+      // Fill in hours from entries
+      entries.forEach(e => {
+        const dayIdx = dates.indexOf(e.date);
+        if (dayIdx >= 0 && projMap[e.project_id]) {
+          projMap[e.project_id].hours[dayIdx] += parseFloat(e.hours);
+        }
+      });
+
+      // Check if week is submitted
+      const hasSubmitted = entries.some(e => e.status === 'submitted');
+      const hasEntries = entries.length > 0;
+      setSubmitted(hasSubmitted && hasEntries);
+
+      // Only show projects with hours OR all DATA.PROJECTS for current week
+      const rows = Object.values(projMap);
+      setGrid(rows);
+      setLoading(false);
+    }).catch(() => {
+      setGrid(window.DATA.PROJECTS.map(p => ({ project: p.id, projectName: p.name, client: p.client || '', hours: [0,0,0,0,0] })));
+      setLoading(false);
+    });
+  }, [user?.id, weekOffset]);
+
+  // -- Cell update --------------------------------------------
+  const updateCell = async (ri, ci, v) => {
+    const val = parseFloat(v) || 0;
+    const copy = grid.map(r => ({ ...r, hours: [...r.hours] }));
+    copy[ri].hours[ci] = val;
+    setGrid(copy);
+
+    // Save to Supabase
+    setSaving(true);
+    await window.SupaEntries.upsertGridCell(
+      user.id, copy[ri].project, copy[ri].projectName, dates[ci], val
+    );
+    setSaving(false);
+  };
+
+  // -- Submit week --------------------------------------------
+  const submitWeek = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+
+    // Build week label e.g. "21 Apr   25 Apr 2026"
+    const s = new Date(dates[0] + 'T00:00:00');
+    const e = new Date(dates[4] + 'T00:00:00');
+    const weekLabel = `${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}   ${e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+
+    const notifyPayload = {
+      employeeName: user.name,
+      employeeRole: user.role || '',
+      weekLabel,
+      totalHours: grand.toFixed(1),
+      mondayDate: dates[0],
+    };
+
+    const ok = await window.SupaEntries.submitWeek(user.id, dates[0], notifyPayload);
+    if (ok) setSubmitted(true);
+    setSubmitting(false);
+  };
+
+  // -- Totals -------------------------------------------------
+  const rowTotal = (r) => r.hours.reduce((s, x) => s + x, 0);
+  const colTotal = (ci) => grid.reduce((s, r) => s + r.hours[ci], 0);
+  const grand = grid.reduce((s, r) => s + rowTotal(r), 0);
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div>
+          <h3 className="card-title">{fmtWeekTitle(dates)}</h3>
+          <div className="card-sub">
+            Weekly timesheet   {saving ? 'Saving ' : 'Auto-saved to Supabase'}
+          </div>
+        </div>
+        <div style={{display: 'flex', gap: 6, alignItems: 'center'}}>
+          <span className={`badge ${submitted ? 'success' : 'info'}`}>
+            {submitted ? 'Submitted' : 'Draft'}
+          </span>
+          <button className="btn btn-sm" onClick={() => setWeekOffset(weekOffset - 1)}>
+            <Icon name="chevronL" size={14}/>
+          </button>
+          <button className="btn btn-sm" onClick={() => setWeekOffset(0)}>
+            {isCurrentWeek ? 'This week' : 'Go to today'}
+          </button>
+          <button className="btn btn-sm" onClick={() => setWeekOffset(weekOffset + 1)} disabled={isCurrentWeek}>
+            <Icon name="chevronR" size={14}/>
+          </button>
+          {window.ExportButtons && React.createElement(window.ExportButtons, {user, weekOffset, size:'sm'})}
+          {!submitted && (
+            <button className="btn btn-sm btn-primary" onClick={submitWeek} disabled={submitting || grand === 0} title="Submit when timesheet is complete">
+              <Icon name="send" size={14}/> {submitting ? 'Submitting ' : 'Submit'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{padding: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>
+          Loading timesheet 
+        </div>
+      ) : (
+        <div style={{overflowX: 'auto'}}>
+          <table className="week-grid">
+            <thead>
+              <tr>
+                <th style={{width: '35%'}}>Project</th>
+                {dates.map(d => (
+                  <th key={d} className={`day-col ${d === today ? 'today-col' : ''}`}>
+                    {fmtDayLabel(d)}
+                  </th>
+                ))}
+                <th className="total-col">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grid.map((row, ri) => (
+                <tr key={row.project}>
+                  <td>
+                    <div className="week-project">
+                      {row.projectName}
+                      {row.client && <div className="proj-sub">{row.project.toUpperCase()}   {row.client}</div>}
+                    </div>
+                  </td>
+                  {row.hours.map((h, ci) => (
+                    <td key={ci} className={`week-cell ${h > 0 ? 'has-value' : 'empty'} ${dates[ci] === today ? 'today-col' : ''}`}>
+                      <input
+                        type="number"
+                        step="0.25"
+                        min="0"
+                        max="24"
+                        value={h === 0 ? '' : h}
+                        placeholder=" "
+                        disabled={submitted}
+                        onChange={(e) => updateCell(ri, ci, e.target.value)}
+                      />
+                    </td>
+                  ))}
+                  <td className="week-total">{rowTotal(row) > 0 ? rowTotal(row).toFixed(2) : ' '}</td>
+                </tr>
+              ))}
+              <tr className="week-total-row">
+                <td><div className="week-project">Daily total</div></td>
+                {dates.map((_, ci) => (
+                  <td key={ci} className={`week-total ${dates[ci] === today ? 'today-col' : ''}`}>
+                    {colTotal(ci) > 0 ? colTotal(ci).toFixed(2) : ' '}
+                  </td>
+                ))}
+                <td className="week-total" style={{fontWeight: 700}}>{grand > 0 ? grand.toFixed(2) : ' '}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeaveCard() {
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div>
+          <h3 className="card-title">Leave balance</h3>
+          <div className="card-sub">2026 allowance</div>
+        </div>
+        <button className="btn btn-sm btn-primary"><Icon name="plus" size={14}/> Request leave</button>
+      </div>
+      <div className="leave-grid">
+        <div className="leave-stat">
+          <div className="n">18</div>
+          <div className="l">Annual leave remaining</div>
+        </div>
+        <div className="leave-stat">
+          <div className="n">6</div>
+          <div className="l">Sick leave remaining</div>
+        </div>
+        <div className="leave-stat">
+          <div className="n">2</div>
+          <div className="l">Pending requests</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WeekBars() {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  const values = [8.0, 8.25, 7.5, 8.0, 6.75];
+  const max = 10;
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div>
+          <h3 className="card-title">Hours this week</h3>
+          <div className="card-sub">Daily totals   8h target</div>
+        </div>
+        <span className="badge info"><span className="dot"/>On track</span>
+      </div>
+      <div className="day-bars">
+        {days.map((d, i) => (
+          <div key={d} className="day-bar">
+            <div className="bar" style={{height: '100%'}}>
+              <div className="fill" style={{height: `${(values[i]/max)*100}%`}}/>
+            </div>
+            <div className="label">{d}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DesktopAgentBanner() {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '1fr auto',
+      gap: 18,
+      padding: '18px 22px',
+      background: 'linear-gradient(135deg, #102347 0%, #1a3260 100%)',
+      color: '#fff',
+      borderRadius: 'var(--radius-lg)',
+      marginBottom: 22,
+      alignItems: 'center',
+    }}>
+      <div style={{display: 'flex', gap: 14, alignItems: 'center'}}>
+        <div style={{
+          width: 44, height: 44, borderRadius: 10,
+          background: 'rgba(255,255,255,0.12)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round">
+            <rect x="3" y="4" width="18" height="12" rx="1"/>
+            <path d="M8 20h8M12 16v4"/>
+          </svg>
+        </div>
+        <div>
+          <div style={{fontSize: 14, fontWeight: 600}}>
+            Install the Windows desktop agent
+          </div>
+        </div>
+      </div>
+      <div style={{display: 'flex', gap: 8}}>
+        <a
+          href="NLA Desktop Agent.html"
+          target="_blank"
+          rel="noopener"
+          style={{
+            background: '#fff', color: '#102347',
+            padding: '9px 16px', borderRadius: 8,
+            fontSize: 13, fontWeight: 600,
+            textDecoration: 'none',
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+          }}
+        >
+          <Icon name="download" size={14}/> Download for Windows
+        </a>
+        <a
+          href="NLA Desktop Agent.html"
+          target="_blank"
+          rel="noopener"
+          style={{
+            border: '1px solid rgba(255,255,255,0.25)', color: '#fff',
+            padding: '9px 14px', borderRadius: 8,
+            fontSize: 13, fontWeight: 500,
+            textDecoration: 'none',
+          }}
+        >
+          Preview agent
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function EmployeeView({ featuresEnabled, user, activeNav }) {
+  const [clockState, setClockState] = useStateEmp('working');
+  const [entries, setEntries] = useStateEmp([]);
+
+  useEffectEmp(() => {
+    if (!user?.id) return;
+    const today = new Date().toISOString().split('T')[0];
+    window.SupaEntries.forDay(user.id, today).then(rows => {
+      setEntries(rows.map(r => ({
+        id: r.id, project: r.project_id, type: r.task_type,
+        title: r.title, notes: r.notes || '', hours: parseFloat(r.hours),
+      })));
+    }).catch(() => setEntries(window.DATA.TODAY_ENTRIES));
+  }, [user?.id]);
+
+  const activity = window.useActivityTracker({ enabled: clockState === 'working', idleThresholdSec: 120 });
+
+  const todayLabel = new Date().toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+
+  const getWeekLabel = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const mon = new Date(d); mon.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+    const fri = new Date(mon); fri.setDate(mon.getDate() + 4);
+    return mon.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) +
+      '   ' + fri.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const nav = activeNav || 'dashboard';
+
+  return (
+    <div className="content">
+
+      {nav === 'dashboard' && (
+        <>
+          <DesktopAgentBanner />
+          <ClockCard clockState={clockState} setClockState={setClockState} activity={activity} user={user} />
+          <div className="section-title">
+            <h2>Today</h2>
+            <span className="hint">{todayLabel}</span>
+          </div>
+          <StatCards featuresEnabled={featuresEnabled} />
+          <div className="col-8-4">
+            <TodayEntries entries={entries} setEntries={setEntries} userId={user?.id} />
+            <WeekBars />
+          </div>
+        </>
+      )}
+
+      {nav === 'timesheet' && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>My Timesheet</h2>
+            <span className="hint">{getWeekLabel()}   Submit for approval when complete</span>
+          </div>
+          <WeeklyGrid user={user} />
+          <div className="section-title">
+            <h2>Today's entries</h2>
+            <span className="hint">{todayLabel}</span>
+          </div>
+          <div className="col-8-4">
+            <TodayEntries entries={entries} setEntries={setEntries} userId={user?.id} />
+            <WeekBars />
+          </div>
+        </>
+      )}
+
+      {nav === 'projects' && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>Projects</h2>
+            <span className="hint">Active projects assigned to your team</span>
+          </div>
+          <div className="card">
+            <div className="card-header">
+              <h3 className="card-title">Active projects</h3>
+              <div className="card-sub">{(window.DATA.PROJECTS||[]).length} projects</div>
+            </div>
+            <table className="team-table">
+              <thead>
+                <tr><th>Project</th><th>Code</th><th>Client</th></tr>
+              </thead>
+              <tbody>
+                {(window.DATA.PROJECTS||[]).map(p => (
+                  <tr key={p.id}>
+                    <td>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div style={{width:10,height:10,borderRadius:'50%',background:p.color||'#102347',flexShrink:0}}/>
+                        <span style={{fontWeight:500}}>{p.name}</span>
+                      </div>
+                    </td>
+                    <td style={{color:'var(--text-muted)',fontFamily:'var(--font-mono)',fontSize:12}}>{p.code}</td>
+                    <td style={{color:'var(--text-muted)'}}>{p.client||' '}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {nav === 'leave' && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>Leave & Time off</h2>
+            <span className="hint">Your leave balance and requests for 2026</span>
+          </div>
+          <LeaveCard />
+        </>
+      )}
+
+    </div>
+  );
+}
+window.EmployeeView = EmployeeView;
+
+
+
+
+// ======== activity-monitor.jsx ========
+
+// Manager   Activity Monitor tab
+// Real data from Supabase entries table.
+// App-level tracking (Revit/AutoCAD timeline) requires the Windows Desktop Agent.
+
+const { useState: useStateAM, useEffect: useEffectAM, useMemo: useMemoAM } = React;
+
+const fmtH = (h) => {
+  if (!h || h === 0) return '0h 00m';
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60);
+  return `${hh}h ${String(mm).padStart(2, '0')}m`;
+};
+
+function useActivityData() {
+  const [data, setData] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [lastRefresh, setLastRefresh] = React.useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    const today = new Date().toISOString().split('T')[0];
+    const getMonday = () => {
+      const d = new Date(); const day = d.getDay();
+      d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+      return d.toISOString().split('T')[0];
+    };
+    try {
+      const [profiles, todayEntries, weekEntries] = await Promise.all([
+        window.SupaProfiles.getAll(),
+        window.SupaEntries.teamForDay(today),
+        window.SupaEntries.teamSummary(getMonday(), today),
+      ]);
+
+      const employees = profiles.filter(p => p.user_type === 'employee');
+
+      const rows = employees.map(emp => {
+        const empToday = todayEntries.filter(e => e.user_id === emp.id);
+        const empWeek  = weekEntries.filter(e => e.user_id === emp.id);
+
+        const todayHrs = empToday.reduce((s, e) => s + parseFloat(e.hours), 0);
+        const weekHrs  = empWeek.reduce((s, e) => s + parseFloat(e.hours), 0);
+        const target   = 45; // 8.5h x 5 days
+        const util     = target > 0 ? Math.round((weekHrs / target) * 100) : 0;
+
+        // Last project worked on today
+        const lastEntry = empToday.length > 0 ? empToday[empToday.length - 1] : null;
+
+        // Project breakdown from today entries
+        const projMap = {};
+        empToday.forEach(e => {
+          const k = e.project_id;
+          if (!projMap[k]) projMap[k] = { name: e.project_name || k, hours: 0 };
+          projMap[k].hours += parseFloat(e.hours);
+        });
+        const projects = Object.values(projMap).sort((a,b) => b.hours - a.hours);
+
+        // Week daily hours   Mon to Fri
+        const weekDates = Array.from({length: 5}, (_, i) => {
+          const d = new Date(getMonday());
+          d.setDate(d.getDate() + i);
+          return d.toISOString().split('T')[0];
+        });
+        const weekByDay = weekDates.map(date => {
+          return empWeek.filter(e => e.date === date).reduce((s,e) => s + parseFloat(e.hours), 0);
+        });
+
+        const hasEntriesToday = empToday.length > 0;
+        const status = hasEntriesToday ? 'active' : 'offline';
+
+        return {
+          id:           emp.id,
+          emp:          emp.id,
+          name:         emp.name,
+          role:         emp.role,
+          initials:     emp.initials,
+          status,
+          todayHrs,
+          weekHrs,
+          util,
+          target,
+          projects,
+          weekByDay,
+          lastProject:  lastEntry?.project_name || ' ',
+          entriesCount: empToday.length,
+        };
+      });
+
+      setData(rows);
+      setLastRefresh(new Date());
+    } catch(err) {
+      console.error('Activity monitor load error:', err);
+    }
+    setLoading(false);
+  };
+
+  useEffectAM(() => {
+    load();
+    const interval = setInterval(load, 60000); // refresh every 60s
+    return () => clearInterval(interval);
+  }, []);
+
+  return { data, loading, lastRefresh, reload: load };
+}
+
+function ActivityMonitor() {
+  const { data, loading, lastRefresh, reload } = useActivityData();
+  const [selected, setSelected] = useStateAM(null);
+  const [filter, setFilter] = useStateAM('all');
+
+  const counts = useMemoAM(() => ({
+    all:     data.length,
+    active:  data.filter(a => a.status === 'active').length,
+    offline: data.filter(a => a.status === 'offline').length,
+  }), [data]);
+
+  const totalToday = useMemoAM(() => data.reduce((s,a) => s + a.todayHrs, 0), [data]);
+
+  const filtered = filter === 'all' ? data : data.filter(a => a.status === filter);
+
+  const fmtRefresh = (d) => d ? d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : ' ';
+
+  if (selected) {
+    return <ActivityDetail data={selected} onBack={() => setSelected(null)} />;
+  }
+
+  return (
+    <div className="content">
+      <div className="section-title" style={{marginTop: 0}}>
+        <h2>Activity Monitor</h2>
+        <span className="hint">
+          Real data from timesheet entries   auto-refreshes every 60s
+          {lastRefresh && `   Last updated ${fmtRefresh(lastRefresh)}`}
+          <button onClick={reload} style={{marginLeft:8,background:'none',border:'none',cursor:'pointer',color:'var(--accent)',fontSize:12,padding:0}}>  Refresh</button>
+        </span>
+      </div>
+
+      <div className="stats-row">
+        <div className="card stat">
+          <div className="stat-label">Active today</div>
+          <div className="stat-value">{loading ? ' ' : counts.active}<span className="unit">/ {counts.all}</span></div>
+          <div className="stat-delta up">Logged entries today</div>
+        </div>
+        <div className="card stat">
+          <div className="stat-label">Offline today</div>
+          <div className="stat-value">{loading ? ' ' : counts.offline}<span className="unit">employees</span></div>
+          <div className="stat-delta">No entries logged yet</div>
+        </div>
+        <div className="card stat">
+          <div className="stat-label">Studio hours today</div>
+          <div className="stat-value">{loading ? ' ' : totalToday.toFixed(1)}<span className="unit">hrs</span></div>
+          <div className="stat-delta">Across {counts.all} employees</div>
+        </div>
+        <div className="card stat">
+          <div className="stat-label">App tracking</div>
+          <div className="stat-value" style={{fontSize:16,paddingTop:4}}>Pending</div>
+          <div className="stat-delta">Install desktop agent</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header" style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+          <div>
+            <h3 className="card-title">Employee activity   today</h3>
+            <div className="card-sub">Click any row to see project breakdown and week trend</div>
+          </div>
+          <div style={{flex:1}}/>
+          <div className="am-filters">
+            {[['all','All'],['active','Active'],['offline','Offline']].map(([f,l]) => (
+              <button key={f} className={`am-filter ${filter === f ? 'on' : ''}`} onClick={() => setFilter(f)}>
+                {l} <span className="am-filter-count">{counts[f] ?? data.length}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading activity data </div>
+        ) : filtered.length === 0 ? (
+          <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>No employees found.</div>
+        ) : (
+          <div className="am-list">
+            {filtered.map(a => {
+              const pct = Math.min(100, (a.weekHrs / a.target) * 100);
+              return (
+                <button key={a.id} className="am-row" onClick={() => setSelected(a)}>
+                  <div className="am-who">
+                    <div className={`am-status am-status-${a.status}`}><span className="dot"/></div>
+                    <div className="avatar sm">{a.initials}</div>
+                    <div style={{minWidth:0}}>
+                      <div className="am-name">{a.name}</div>
+                      <div className="am-sub">{a.role}{a.lastProject !== ' ' ? `   ${a.lastProject}` : ''}</div>
+                    </div>
+                  </div>
+                  <div className="am-now">
+                    <div className="am-now-label">Today</div>
+                    <div className="am-now-val">
+                      {a.status === 'active'
+                        ? <span style={{color:'var(--accent)',fontWeight:600}}>{fmtH(a.todayHrs)}</span>
+                        : <span className="am-offline-text">No entries yet</span>}
+                    </div>
+                  </div>
+                  <div className="am-bar-col">
+                    <div className="au-bar">
+                      <div className="au-seg bb-revit" style={{width:`${pct}%`}} title={`${a.weekHrs.toFixed(1)}h this week`}/>
+                    </div>
+                    <div className="am-totals">
+                      <span className="am-billable">{fmtH(a.weekHrs)} this week</span>
+                      <span className="am-other">  target {a.target}h</span>
+                    </div>
+                  </div>
+                  <div className="am-util">
+                    <div className="am-util-val" style={{color: a.util >= 100 ? '#1d8a4a' : a.util >= 75 ? '#a87220' : '#a52822'}}>{a.util}%</div>
+                    <div className="am-util-label">week util.</div>
+                  </div>
+                  <Icon name="chevronR" size={16}/>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+const APP_META = {
+  revit:      { name: 'Autodesk Revit',   color: '#3fb6e6', cls: 'revit' },
+  acad:       { name: 'AutoCAD',          color: '#e8554e', cls: 'acad' },
+  navisworks: { name: 'Navisworks',       color: '#f59e0b', cls: 'sketch' },
+  civil3d:    { name: 'Civil 3D',         color: '#10b981', cls: 'teal' },
+  sketchup:   { name: 'SketchUp',         color: '#f9a03f', cls: 'sketch' },
+  teams:      { name: 'Teams',            color: '#6c7dd5', cls: 'teams' },
+  outlook:    { name: 'Outlook',          color: '#4a90d9', cls: 'outlook' },
+  pdf:        { name: 'PDF / Bluebeam',   color: '#9a6fe0', cls: 'pdf' },
+  excel:      { name: 'Excel',            color: '#1d7a44', cls: 'teal' },
+  word:       { name: 'Word',             color: '#1e56a0', cls: 'revit' },
+  chrome:     { name: 'Chrome',           color: '#fbbc04', cls: 'sketch' },
+  other:      { name: 'Other',            color: '#9ca3af', cls: 'other' },
+};
+
+function AppUsageSection({ userId }) {
+  const [appData, setAppData] = useStateAM(null);
+  const [loading, setLoading] = useStateAM(true);
+
+  useEffectAM(() => {
+    if (!userId) return;
+    const today = new Date().toISOString().split('T')[0];
+    window.SupaAppUsage.forDay(userId, today).then(agg => {
+      setAppData(agg);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [userId]);
+
+  const hasData = appData && Object.keys(appData).length > 0;
+  const totalSecs = hasData ? Object.values(appData).reduce((s,v) => s+v, 0) : 0;
+
+  const fmtSecs = (s) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return `${h}h ${String(m).padStart(2,'0')}m`;
+  };
+
+  return (
+    <>
+      <div className="section-title">
+        <h2 style={{fontSize:15}}>App tracking   today</h2>
+        <span className="hint">{hasData ? 'Live from desktop agent' : 'Requires Windows Desktop Agent'}</span>
+      </div>
+      {loading ? (
+        <div className="card" style={{padding:'24px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading </div>
+      ) : !hasData ? (
+        <div className="card" style={{padding:'32px 28px',textAlign:'center'}}>
+          <div style={{width:52,height:52,borderRadius:12,background:'rgba(16,35,71,0.06)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px',color:'var(--brand-navy)'}}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          </div>
+          <p style={{margin:'0 0 4px',fontWeight:600,fontSize:14,color:'var(--text)'}}>Desktop agent not installed</p>
+          <p style={{margin:'0 0 16px',fontSize:13,color:'var(--text-muted)',maxWidth:360,marginLeft:'auto',marginRight:'auto'}}>
+            Install the NLA Windows agent on this employee's PC to track Revit, AutoCAD, Teams usage automatically.
+          </p>
+          <a href="/agent" target="_blank" style={{background:'var(--brand-navy)',color:'white',padding:'9px 18px',borderRadius:7,textDecoration:'none',fontSize:13,fontWeight:500}}>View setup guide  </a>
+        </div>
+      ) : (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">Application breakdown   today</h3>
+            <div className="card-sub">Focus time tracked by desktop agent   {fmtSecs(totalSecs)} total</div>
+          </div>
+          <table className="am-apps-table">
+            <thead><tr><th>Application</th><th>Time</th><th>Share</th></tr></thead>
+            <tbody>
+              {Object.entries(appData)
+                .sort(([,a],[,b]) => b - a)
+                .map(([key, secs]) => {
+                  const meta = APP_META[key] || APP_META.other;
+                  const pct = totalSecs > 0 ? (secs / totalSecs * 100) : 0;
+                  return (
+                    <tr key={key}>
+                      <td><span className={`bb-dot bb-${meta.cls}`}/>{meta.name}</td>
+                      <td className="mono">{fmtSecs(secs)}</td>
+                      <td>
+                        <div className="am-share">
+                          <div className="am-share-bar"><div className={`am-share-fill bb-${meta.cls}`} style={{width:`${pct}%`}}/></div>
+                          <span>{pct.toFixed(0)}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ActivityDetail({ data, onBack }) {
+  const days = ['Mon','Tue','Wed','Thu','Fri'];
+  const maxDay = Math.max(...(data.weekByDay || [0]), 9);
+
+  return (
+    <div className="content">
+      <button className="am-back" onClick={onBack}>
+        <Icon name="chevronL" size={14}/> Back to Activity Monitor
+      </button>
+
+      <div className="am-detail-header">
+        <div className="avatar lg">{data.initials}</div>
+        <div style={{flex:1, minWidth:0}}>
+          <h2 style={{margin:0}}>{data.name}</h2>
+          <div className="am-detail-sub">{data.role}</div>
+          <div className="am-detail-meta">
+            <span className={`am-status-pill am-status-${data.status}`}>
+              <span className="dot"/>
+              {data.status === 'active' ? `Active   ${data.entriesCount} entries today` : 'No entries today'}
+            </span>
+          </div>
+        </div>
+        <div className="am-detail-metric">
+          <div className="m-l">Today</div>
+          <div className="m-v">{fmtH(data.todayHrs)}</div>
+          <div className="m-s">{data.entriesCount} entr{data.entriesCount === 1 ? 'y' : 'ies'} logged</div>
+        </div>
+        <div className="am-detail-metric">
+          <div className="m-l">This week</div>
+          <div className="m-v">{data.weekHrs.toFixed(1)}<span style={{fontSize:14,opacity:0.6}}>/{data.target}h</span></div>
+          <div className="m-s">{data.util}% utilization</div>
+        </div>
+      </div>
+
+      {/* Project breakdown */}
+      <div className="section-title">
+        <h2 style={{fontSize:15}}>Projects   today</h2>
+        <span className="hint">From logged timesheet entries</span>
+      </div>
+      <div className="card">
+        {data.projects.length === 0 ? (
+          <div style={{padding:'24px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>No entries logged today.</div>
+        ) : (
+          <table className="am-apps-table">
+            <thead>
+              <tr><th>Project</th><th>Hours</th><th>Share</th></tr>
+            </thead>
+            <tbody>
+              {data.projects.map((p,i) => {
+                const pct = data.todayHrs > 0 ? (p.hours / data.todayHrs) * 100 : 0;
+                return (
+                  <tr key={i}>
+                    <td><span className="bb-dot bb-revit"/>{p.name}</td>
+                    <td className="mono">{fmtH(p.hours)}</td>
+                    <td>
+                      <div className="am-share">
+                        <div className="am-share-bar"><div className="am-share-fill bb-revit" style={{width:`${pct}%`}}/></div>
+                        <span>{pct.toFixed(0)}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* App usage   real from desktop agent or placeholder */}
+      <AppUsageSection userId={data.id} />
+
+      {/* Week bars - real data */}
+      <div className="col-7-5">
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">This week</h3>
+            <div className="card-sub">Daily hours logged   target 9h/day</div>
+          </div>
+          <div className="am-week">
+            {(data.weekByDay || [0,0,0,0,0]).map((h, i) => {
+              const pct = Math.min(100, (h / 9) * 100);
+              const isToday = i === new Date().getDay() - 1;
+              return (
+                <div key={i} className="am-week-day">
+                  <div className="am-week-bar-wrap">
+                    <div className={`am-week-bar ${isToday ? 'today' : ''}`} style={{height:`${pct}%`}}/>
+                  </div>
+                  <div className="am-week-val">{h > 0 ? h.toFixed(1) : ' '}</div>
+                  <div className="am-week-label">{days[i]}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="am-week-summary">
+            Total: <b>{data.weekHrs.toFixed(1)}h</b> of {data.target}h target   {data.util}% utilization
+          </div>
+        </div>
+
+        <div className="card stat" style={{alignSelf:'flex-start'}}>
+          <div className="stat-label">Entries this week</div>
+          <div className="stat-value">{data.weekByDay ? data.weekByDay.filter(h => h > 0).length : 0}<span className="unit">days active</span></div>
+          <div className="stat-delta">{data.weekHrs.toFixed(1)}h / {data.target}h target</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+window.ActivityMonitor = ActivityMonitor;
+
+
+
+
+// ======== manager.jsx ========
+
+// -- Team Timesheet Overview ------------------------------------
+// Shows weekly/monthly hours per employee with navigation
+
+function TeamOverviewTable() {
+  const [view, setView] = React.useState('week');           // 'week' | 'month'
+  const [weekOffset, setWeekOffset] = React.useState(0);   // 0 = this week, -1 = last week etc
+  const [monthOffset, setMonthOffset] = React.useState(0); // 0 = this month
+  const [teamData, setTeamData] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [expandedRow, setExpandedRow] = React.useState(null);
+
+  // -- Date helpers ---------------------------------------------
+  const getWeekDates = (offset) => {
+    const d = new Date();
+    const day = d.getDay();
+    d.setDate(d.getDate() - day + (day === 0 ? -6 : 1) + offset * 7);
+    const mon = d.toISOString().split('T')[0];
+    const fri = new Date(d); fri.setDate(d.getDate() + 4);
+    return { from: mon, to: fri.toISOString().split('T')[0], days: 5 };
+  };
+
+  const getMonthDates = (offset) => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + offset);
+    const from = d.toISOString().split('T')[0];
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return { from, to: last.toISOString().split('T')[0], days: last.getDate() };
+  };
+
+  const getRange = () => view === 'week' ? getWeekDates(weekOffset) : getMonthDates(monthOffset);
+
+  const fmtRangeLabel = () => {
+    const { from, to } = getRange();
+    const s = new Date(from + 'T00:00:00');
+    const e = new Date(to + 'T00:00:00');
+    if (view === 'week') {
+      const isThisWeek = weekOffset === 0;
+      const prefix = isThisWeek ? 'This week   ' : weekOffset === -1 ? 'Last week   ' : '';
+      return prefix + s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + '   ' +
+             e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    } else {
+      return s.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    }
+  };
+
+  // -- Data loading ---------------------------------------------
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    const { from, to } = getRange();
+    const today = new Date().toISOString().split('T')[0];
+    try {
+      const [periodEntries, todayEntries, profiles] = await Promise.all([
+        window.SupaEntries.teamSummary(from, to),
+        window.SupaEntries.teamForDay(today),
+        window.SupaProfiles.getAll(),
+      ]);
+
+      const todayByUser = {};
+      todayEntries.forEach(e => {
+        todayByUser[e.user_id] = (todayByUser[e.user_id] || 0) + parseFloat(e.hours);
+      });
+
+      const employees = profiles.filter(p => p.user_type === 'employee');
+
+      const rows = employees.map(emp => {
+        const empEntries = periodEntries.filter(e => e.user_id === emp.id);
+        const totalHours = empEntries.reduce((s, e) => s + parseFloat(e.hours), 0);
+        const byDate = {};
+        empEntries.forEach(e => {
+          byDate[e.date] = (byDate[e.date] || 0) + parseFloat(e.hours);
+        });
+        const submittedCount = empEntries.filter(e => e.status === 'submitted').length;
+        const approvedCount  = empEntries.filter(e => e.status === 'approved').length;
+        const lastProject = empEntries.length > 0 ? (empEntries[empEntries.length-1].project_name || empEntries[empEntries.length-1].project_id) : ' ';
+        const target = view === 'week' ? 45 : 45 * 4;
+        const util = target > 0 ? Math.round((totalHours / target) * 100) : 0;
+
+        return {
+          id: emp.id, name: emp.name, role: emp.role,
+          initials: emp.initials,
+          totalHours, byDate, target, util,
+          hoursToday: todayByUser[emp.id] || 0,
+          submittedCount, approvedCount,
+          lastProject,
+          daysActive: Object.keys(byDate).length,
+        };
+      });
+
+      setTeamData(rows.sort((a,b) => b.totalHours - a.totalHours));
+    } catch(e) { console.error('TeamOverview load error:', e); }
+    setLoading(false);
+  }, [view, weekOffset, monthOffset]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const totalStudioHours = teamData.reduce((s, r) => s + r.totalHours, 0);
+  const activeCount = teamData.filter(r => r.totalHours > 0).length;
+  const projById = (id) => (window.DATA.PROJECTS || []).find(p => p.id === id);
+
+  const utilColor = (u) => u >= 100 ? '#1d8a4a' : u >= 75 ? '#a87220' : u > 0 ? '#a52822' : 'var(--text-muted)';
+
+  return (
+    <div className="card">
+      {/* -- Header ------------------------------------------- */}
+      <div className="card-header" style={{flexWrap:'wrap',gap:10}}>
+        <div>
+          <h3 className="card-title">Team timesheet   {fmtRangeLabel()}</h3>
+          <div className="card-sub">
+            {loading ? 'Loading ' : `${activeCount} of ${teamData.length} employees logged hours   ${totalStudioHours.toFixed(1)}h total`}
+          </div>
+        </div>
+        <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+          {/* View toggle */}
+          <div style={{display:'flex',background:'var(--surface-muted)',borderRadius:7,padding:2,gap:2}}>
+            {[['week','Week'],['month','Month']].map(([id,label]) => (
+              <button key={id} onClick={() => { setView(id); setWeekOffset(0); setMonthOffset(0); }}
+                style={{padding:'4px 12px',borderRadius:5,border:'none',cursor:'pointer',fontSize:12,
+                  background: view===id ? 'white' : 'transparent',
+                  fontWeight: view===id ? 600 : 400,
+                  color: view===id ? 'var(--text)' : 'var(--text-muted)',
+                  boxShadow: view===id ? '0 0 0 0.5px var(--border)' : 'none',
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* Navigation */}
+          <button className="btn btn-sm" onClick={() => view==='week' ? setWeekOffset(w=>w-1) : setMonthOffset(m=>m-1)}> </button>
+          <button className="btn btn-sm"
+            style={{fontSize:11}}
+            onClick={() => view==='week' ? setWeekOffset(0) : setMonthOffset(0)}>
+            {view==='week' ? 'This week' : 'This month'}
+          </button>
+          <button className="btn btn-sm"
+            disabled={(view==='week'&&weekOffset>=0)||(view==='month'&&monthOffset>=0)}
+            onClick={() => view==='week' ? setWeekOffset(w=>w+1) : setMonthOffset(m=>m+1)}> </button>
+          {/* Export */}
+          <button className="btn btn-sm" onClick={() => window.exportTeamExcel && window.exportTeamExcel()}
+            style={{display:'flex',alignItems:'center',gap:4}}>
+            <Icon name="download" size={12}/> Excel
+          </button>
+          <button className="btn btn-sm" onClick={() => window.exportTeamPDF && window.exportTeamPDF()}
+            style={{display:'flex',alignItems:'center',gap:4,color:'#102347',borderColor:'#102347'}}>
+            <Icon name="download" size={12}/> PDF
+          </button>
+          <button className="btn btn-sm" onClick={load} title="Refresh"><Icon name="refresh" size={13}/></button>
+        </div>
+      </div>
+
+      {/* -- Summary stats strip ------------------------------- */}
+      {!loading && teamData.length > 0 && (
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:0,borderBottom:'1px solid var(--border)'}}>
+          {[
+            ['Studio total', totalStudioHours.toFixed(1)+'h', 'Period hours logged'],
+            ['Active staff', activeCount+' / '+teamData.length, 'Logged at least 1 entry'],
+            ['Avg per person', teamData.length>0?(totalStudioHours/teamData.length).toFixed(1)+'h':' ', 'Studio average'],
+            ['Avg utilization', teamData.length>0?Math.round(teamData.reduce((s,r)=>s+r.util,0)/teamData.length)+'%':' ', 'vs target'],
+          ].map(([lbl,val,sub])=>(
+            <div key={lbl} style={{padding:'12px 20px',borderRight:'1px solid var(--border)'}}>
+              <div style={{fontSize:11,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.06em'}}>{lbl}</div>
+              <div style={{fontSize:20,fontWeight:700,color:'var(--text)',fontFamily:'var(--font-mono)',margin:'3px 0 2px'}}>{val}</div>
+              <div style={{fontSize:11,color:'var(--text-faint)'}}>{sub}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* -- Employee rows ------------------------------------- */}
+      {loading ? (
+        <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading team data </div>
+      ) : teamData.length === 0 ? (
+        <div style={{padding:'32px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>
+          No employee profiles found. Employees need to log in at least once to appear here.
+        </div>
+      ) : (
+        <div style={{overflowX:'auto'}}>
+          <table className="team-table">
+            <thead>
+              <tr>
+                <th style={{width:220}}>Employee</th>
+                <th>Last project</th>
+                <th className="num" style={{width:80}}>Today</th>
+                <th className="num" style={{width:100}}>{view==='week'?'Week hrs':'Month hrs'}</th>
+                <th style={{width:140}}>Progress</th>
+                <th className="num" style={{width:70}}>Util %</th>
+                <th style={{width:90}}>Status</th>
+                <th style={{width:40}}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {teamData.map(row => {
+                const pct = Math.min(100, row.util);
+                const isExpanded = expandedRow === row.id;
+                return (
+                  <React.Fragment key={row.id}>
+                    <tr style={{cursor:'pointer'}} onClick={() => setExpandedRow(isExpanded ? null : row.id)}>
+                      <td>
+                        <div className="team-cell-emp">
+                          <div className="avatar">{row.initials}</div>
+                          <div>
+                            <div className="name">{row.name}</div>
+                            <div className="role">{row.role}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{color:'var(--text-muted)',fontSize:12}}>{row.lastProject}</td>
+                      <td className="num" style={{fontWeight: row.hoursToday>0?600:400, color: row.hoursToday>0?'var(--accent)':'var(--text-muted)'}}>
+                        {row.hoursToday > 0 ? row.hoursToday.toFixed(1)+'h' : ' '}
+                      </td>
+                      <td className="num" style={{fontWeight:600}}>{row.totalHours > 0 ? row.totalHours.toFixed(1)+'h' : ' '}</td>
+                      <td>
+                        <div className="util-bar" style={{height:6}}>
+                          <span style={{width:`${pct}%`, background: utilColor(row.util), borderRadius:3}}/>
+                        </div>
+                        <div style={{fontSize:10,color:'var(--text-faint)',marginTop:2}}>{row.totalHours.toFixed(1)} / {row.target}h</div>
+                      </td>
+                      <td className="num" style={{fontWeight:700, color: utilColor(row.util)}}>{row.util}%</td>
+                      <td>
+                        {row.approvedCount > 0 ? (
+                          <span className="badge success" style={{fontSize:10}}>Approved</span>
+                        ) : row.submittedCount > 0 ? (
+                          <span className="badge warning" style={{fontSize:10}}>Pending</span>
+                        ) : row.totalHours > 0 ? (
+                          <span className="badge" style={{fontSize:10}}>Draft</span>
+                        ) : (
+                          <span className="badge" style={{fontSize:10,color:'var(--text-faint)'}}>No entries</span>
+                        )}
+                      </td>
+                      <td style={{textAlign:'center',color:'var(--text-muted)'}}>
+                        {isExpanded ? ' ' : ' '}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={8} style={{padding:0,background:'var(--surface-muted)'}}>
+                          <TeamEmployeeBreakdown employee={row} range={getRange()} view={view} />
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{background:'rgba(16,35,71,0.04)'}}>
+                <td colSpan={2} style={{padding:'10px 12px',fontWeight:600,fontSize:13}}>Studio Total</td>
+                <td className="num" style={{fontWeight:600}}>{teamData.reduce((s,r)=>s+r.hoursToday,0).toFixed(1)}h</td>
+                <td className="num" style={{fontWeight:700,color:'var(--brand-navy)'}}>{totalStudioHours.toFixed(1)}h</td>
+                <td colSpan={4}></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -- Per-employee expanded breakdown ----------------------------
+function TeamEmployeeBreakdown({ employee, range, view }) {
+  const [entries, setEntries] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    window.SupaEntries.teamSummary(range.from, range.to)
+      .then(all => {
+        const mine = all.filter(e => e.user_id === employee.id);
+        setEntries(mine);
+        setLoading(false);
+      }).catch(() => setLoading(false));
+  }, [employee.id, range.from, range.to]);
+
+  if (loading) return <div style={{padding:'16px 24px',fontSize:13,color:'var(--text-muted)'}}>Loading </div>;
+  if (entries.length === 0) return <div style={{padding:'16px 24px',fontSize:13,color:'var(--text-muted)'}}>No entries in this period.</div>;
+
+  // Group by date
+  const byDate = {};
+  entries.forEach(e => {
+    if (!byDate[e.date]) byDate[e.date] = { hours: 0, projects: {} };
+    byDate[e.date].hours += parseFloat(e.hours);
+    const pk = e.project_name || e.project_id || ' ';
+    byDate[e.date].projects[pk] = (byDate[e.date].projects[pk] || 0) + parseFloat(e.hours);
+  });
+
+  // Group by project
+  const byProject = {};
+  entries.forEach(e => {
+    const pk = e.project_name || e.project_id || ' ';
+    byProject[pk] = (byProject[pk] || 0) + parseFloat(e.hours);
+  });
+
+  const sortedDates = Object.keys(byDate).sort();
+  const fmtDay = (d) => new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+
+  return (
+    <div style={{padding:'16px 24px 20px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+      {/* Daily breakdown */}
+      <div>
+        <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--text-muted)',marginBottom:8}}>
+          Daily hours
+        </div>
+        <table style={{width:'100%',fontSize:12,borderCollapse:'collapse'}}>
+          <thead>
+            <tr>
+              <th style={{textAlign:'left',padding:'4px 8px',color:'var(--text-faint)',fontWeight:500}}>Date</th>
+              <th style={{textAlign:'right',padding:'4px 8px',color:'var(--text-faint)',fontWeight:500}}>Hours</th>
+              <th style={{textAlign:'left',padding:'4px 8px',color:'var(--text-faint)',fontWeight:500}}>Projects</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedDates.map(date => (
+              <tr key={date} style={{borderTop:'1px solid var(--border)'}}>
+                <td style={{padding:'5px 8px',color:'var(--text)'}}>{fmtDay(date)}</td>
+                <td style={{padding:'5px 8px',textAlign:'right',fontWeight:600,color:'var(--accent)',fontFamily:'var(--font-mono)'}}>{byDate[date].hours.toFixed(1)}h</td>
+                <td style={{padding:'5px 8px',color:'var(--text-muted)',fontSize:11}}>
+                  {Object.entries(byDate[date].projects).map(([p,h])=>`${p} (${h.toFixed(1)}h)`).join(', ')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {/* Project breakdown */}
+      <div>
+        <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--text-muted)',marginBottom:8}}>
+          By project
+        </div>
+        {Object.entries(byProject).sort(([,a],[,b])=>b-a).map(([proj,hrs]) => {
+          const total = employee.totalHours || 1;
+          const pct = (hrs/total)*100;
+          return (
+            <div key={proj} style={{marginBottom:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
+                <span style={{color:'var(--text)'}}>{proj}</span>
+                <span style={{fontWeight:600,color:'var(--accent)',fontFamily:'var(--font-mono)'}}>{hrs.toFixed(1)}h   {pct.toFixed(0)}%</span>
+              </div>
+              <div style={{height:5,background:'var(--border)',borderRadius:3,overflow:'hidden'}}>
+                <div style={{width:`${pct}%`,height:'100%',background:'#102347',borderRadius:3}}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+function ManagerStats() {
+  const [stats, setStats] = React.useState({
+    activeToday: ' ', totalToday: ' ', weekHrs: ' ', util: ' ', empCount: 0, pendingApprovals: ' ',
+  });
+
+  React.useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const getMonday = () => {
+      const d = new Date(); const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      d.setDate(diff); return d.toISOString().split('T')[0];
+    };
+    Promise.all([
+      window.SupaEntries.teamForDay(today),
+      window.SupaEntries.teamSummary(getMonday(), today),
+      window.SupaProfiles.getAll(),
+    ]).then(([todayRows, weekRows, profiles]) => {
+      const employees = profiles.filter(p => p.user_type === 'employee');
+      const activeUsers = new Set(todayRows.map(e => e.user_id)).size;
+      const todayHrs = todayRows.reduce((s, e) => s + parseFloat(e.hours), 0);
+      const weekHrs = weekRows.reduce((s, e) => s + parseFloat(e.hours), 0);
+      const weekTarget = employees.length * 45;
+      const util = weekTarget > 0 ? Math.round((weekHrs / weekTarget) * 100) : 0;
+      window.SupaEntries.getPendingSubmissions().then(pending => {
+        const groups = new Set(pending.map(e => e.user_id + e.date?.slice(0,7)));
+        setStats({
+          activeToday: String(activeUsers),
+          totalToday: todayHrs.toFixed(1),
+          weekHrs: weekHrs.toFixed(1),
+          util: util + '%',
+          empCount: employees.length,
+          pendingApprovals: String(groups.size),
+        });
+      }).catch(() => {
+        setStats({
+          activeToday: String(activeUsers),
+          totalToday: todayHrs.toFixed(1),
+          weekHrs: weekHrs.toFixed(1),
+          util: util + '%',
+          empCount: employees.length,
+          pendingApprovals: '0',
+        });
+      });
+    }).catch(() => {});
+  }, []);
+
+  const rows = [
+    { label: 'Active today',    value: stats.activeToday, unit: `of ${stats.empCount}`, delta: 'Logged entries today',   deltaClass: '' },
+    { label: 'Team hrs today',  value: stats.totalToday,  unit: 'hrs',                  delta: `${stats.empCount * 8}h target`, deltaClass: '' },
+    { label: 'Hrs this week',   value: stats.weekHrs,     unit: 'hrs',                  delta: `${stats.util} utilization`,    deltaClass: 'up' },
+    { label: 'Pending approvals', value: stats.pendingApprovals, unit: '', delta: 'Submitted timesheets', deltaClass: stats.pendingApprovals !== '0' ? 'up' : '' },
+  ];
+  return (
+    <div className="stats-row">
+      {rows.map(s => (
+        <div key={s.label} className="card stat">
+          <div className="stat-label">{s.label}</div>
+          <div className="stat-value">{s.value}<span className="unit">{s.unit}</span></div>
+          <div className={`stat-delta ${s.deltaClass}`}>{s.delta}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Approvals() {
+  const [submissions, setSubmissions] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [acting, setActing] = React.useState(null);
+  const [reviewing, setReviewing] = React.useState(null);
+
+  const load = () => {
+    window.SupaEntries.getPendingSubmissions().then(rows => {
+      // Group by user_id + week (monday date)
+      const grouped = {};
+      rows.forEach(e => {
+        const d = new Date(e.date + 'T00:00:00');
+        const day = d.getDay();
+        const monday = new Date(d);
+        monday.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+        const key = `${e.user_id}__${monday.toISOString().split('T')[0]}`;
+        if (!grouped[key]) {
+          grouped[key] = {
+            key,
+            userId: e.user_id,
+            monday: monday.toISOString().split('T')[0],
+            profile: e.profiles,
+            hours: 0,
+            entries: [],
+            submittedAt: e.created_at,
+          };
+        }
+        grouped[key].hours += parseFloat(e.hours);
+        grouped[key].entries.push(e.id);
+        if (e.created_at > grouped[key].submittedAt) grouped[key].submittedAt = e.created_at;
+      });
+      setSubmissions(Object.values(grouped));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  };
+
+  React.useEffect(() => { load(); }, []);
+
+  const fmtWeek = (monday) => {
+    const d = new Date(monday + 'T00:00:00');
+    const fri = new Date(d); fri.setDate(d.getDate() + 4);
+    return `Week of ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}   ${fri.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+  };
+
+  const fmtDate = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+  const approve = async (sub) => {
+    setActing(sub.key + '_approve');
+    const weekLabel = fmtWeek(sub.monday);
+    await window.SupaEntries.approveSubmission(sub.entries, sub.userId, weekLabel);
+    load();
+    setActing(null);
+  };
+
+  const reject = async (sub) => {
+    setActing(sub.key + '_reject');
+    const weekLabel = fmtWeek(sub.monday);
+    await window.SupaEntries.rejectSubmission(sub.entries, sub.userId, weekLabel);
+    load();
+    setActing(null);
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div>
+          <h3 className="card-title">Pending approvals</h3>
+          <div className="card-sub">
+            {loading ? 'Loading ' : `${submissions.length} awaiting review`}
+          </div>
+        </div>
+        <button className="btn btn-sm" onClick={load}><Icon name="refresh" size={14}/></button>
+      </div>
+
+      {loading ? (
+        <div className="empty" style={{padding: '20px', color: 'var(--text-muted)', fontSize: 13}}>Loading </div>
+      ) : submissions.length === 0 ? (
+        <div className="empty" style={{padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13}}>
+            All caught up   no pending timesheets.
+        </div>
+      ) : submissions.map(sub => {
+        const p = sub.profile;
+        const initials = p?.initials || (p?.name || '?').split(' ').map(s => s[0]).join('').slice(0,2).toUpperCase();
+        return (
+          <div key={sub.key} className="request">
+            <div className="avatar">{initials}</div>
+            <div className="req-body">
+              <p className="req-title">
+                {p?.name || sub.userId}   <span style={{fontWeight: 400, color: 'var(--text-muted)'}}>Timesheet</span>
+              </p>
+              <p className="req-sub">{fmtWeek(sub.monday)}   {sub.hours.toFixed(1)} hrs total</p>
+              <p className="req-sub" style={{fontSize: 11.5, marginTop: 2, color: 'var(--text-faint)'}}>
+                Submitted {fmtDate(sub.submittedAt)}
+              </p>
+            </div>
+            <div className="req-actions">
+              <button className="btn btn-sm" disabled={!!acting}
+                onClick={() => setReviewing(sub)}>
+                <Icon name="eye" size={14}/> Review
+              </button>
+              <button
+                className="btn btn-sm"
+                disabled={!!acting}
+                onClick={() => reject(sub)}
+                style={{color: 'var(--red, #c0392b)'}}
+              >
+                {acting === sub.key + '_reject' ? ' ' : <><Icon name="x" size={14}/> Reject</>}
+              </button>
+              <button
+                className="btn btn-sm btn-primary"
+                disabled={!!acting}
+                onClick={() => approve(sub)}
+              >
+                {acting === sub.key + '_approve' ? ' ' : <><Icon name="check" size={14}/> Approve</>}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    {reviewing && (
+      <ReviewModal
+        sub={reviewing}
+        onClose={() => setReviewing(null)}
+        onApprove={() => approve(reviewing)}
+        onReject={() => reject(reviewing)}
+      />
+    )}
+    </div>
+  );
+}
+
+// -- Timesheet Review Modal -------------------------------------
+function ReviewModal({ sub, onClose, onApprove, onReject }) {
+  const [entries, setEntries] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [comment, setComment] = React.useState('');
+  const [sending, setSending] = React.useState(false);
+  const [sent, setSent] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!sub) return;
+    // Load all entries for this employee's week
+    const today = new Date().toISOString().split('T')[0];
+    const friday = new Date(sub.monday + 'T00:00:00');
+    friday.setDate(friday.getDate() + 4);
+    const fridayStr = friday.toISOString().split('T')[0];
+    window.SupaEntries.teamSummary(sub.monday, fridayStr).then(all => {
+      setEntries(all.filter(e => e.user_id === sub.userId));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [sub?.key]);
+
+  if (!sub) return null;
+  const p = sub.profile;
+  const initials = p?.initials || (p?.name||'?')[0].toUpperCase();
+
+  const fmtDay = (d) => new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+
+  // Group by date
+  const byDate = {};
+  entries.forEach(e => {
+    if (!byDate[e.date]) byDate[e.date] = [];
+    byDate[e.date].push(e);
+  });
+
+  const total = entries.reduce((s,e) => s+parseFloat(e.hours), 0);
+
+  const sendComment = async () => {
+    if (!comment.trim()) return;
+    setSending(true);
+    // Save comment as notification to employee
+    if (window.SupaNotifications) {
+      await window.SupaNotifications.create(
+        sub.userId, 'info',
+        'Manager comment on your timesheet',
+        comment.trim()
+      );
+    }
+    setSent(true);
+    setSending(false);
+    setComment('');
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={e=>e.stopPropagation()} style={{maxWidth:560,maxHeight:'85vh',display:'flex',flexDirection:'column'}}>
+        {/* Header */}
+        <div style={{padding:'18px 24px 14px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:12,justifyContent:'space-between'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <div className="avatar">{initials}</div>
+              <div>
+                <h3 style={{margin:0,fontSize:15}}>{p?.name || sub.userId}</h3>
+                <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>
+                  Week of {new Date(sub.monday+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}
+                  {'   '}{total.toFixed(1)}h total
+                </div>
+              </div>
+            </div>
+            <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--text-muted)'}}> </button>
+          </div>
+        </div>
+
+        {/* Daily breakdown */}
+        <div style={{overflowY:'auto',flex:1,padding:'16px 24px'}}>
+          {loading ? (
+            <div style={{textAlign:'center',color:'var(--text-muted)',fontSize:13,padding:'20px'}}>Loading entries </div>
+          ) : Object.keys(byDate).sort().map(date => (
+            <div key={date} style={{marginBottom:16}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                <span style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{fmtDay(date)}</span>
+                <span style={{fontSize:12,fontWeight:700,color:'var(--accent)',fontFamily:'var(--font-mono)'}}>
+                  {byDate[date].reduce((s,e)=>s+parseFloat(e.hours),0).toFixed(1)}h
+                </span>
+              </div>
+              {byDate[date].map(e => (
+                <div key={e.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 10px',
+                  background:'var(--surface-muted)',borderRadius:6,marginBottom:4,fontSize:12}}>
+                  <div>
+                    <span style={{fontWeight:500,color:'var(--text)'}}>{e.project_name||e.project_id}</span>
+                    {e.title && e.title !== 'Weekly timesheet   '+e.project_name && (
+                      <span style={{color:'var(--text-muted)',marginLeft:6}}>  {e.title}</span>
+                    )}
+                  </div>
+                  <span style={{fontFamily:'var(--font-mono)',fontWeight:600,color:'var(--text)'}}>{parseFloat(e.hours).toFixed(1)}h</span>
+                </div>
+              ))}
+            </div>
+          ))}
+
+          {/* Comment box */}
+          <div style={{borderTop:'1px solid var(--border)',paddingTop:16,marginTop:8}}>
+            <label style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--text-muted)',display:'block',marginBottom:6}}>
+              Send comment to employee
+            </label>
+            {sent && <div style={{fontSize:12,color:'#1d8a4a',marginBottom:8}}>  Comment sent as notification</div>}
+            <textarea
+              value={comment}
+              onChange={e=>setComment(e.target.value)}
+              placeholder="e.g. Please split project hours more accurately "
+              style={{width:'100%',height:70,border:'1px solid var(--border)',borderRadius:7,padding:'8px 10px',
+                fontFamily:'var(--font-sans)',fontSize:13,resize:'vertical',outline:'none',
+                background:'var(--surface)',color:'var(--text)'}}
+            />
+            <button className="btn btn-sm" onClick={sendComment} disabled={!comment.trim()||sending}
+              style={{marginTop:6}}>
+              {sending ? 'Sending ' : 'Send comment'}
+            </button>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{padding:'14px 24px',borderTop:'1px solid var(--border)',display:'flex',gap:8,justifyContent:'flex-end',flexShrink:0}}>
+          <button className="btn" onClick={onClose}>Close</button>
+          <button className="btn btn-sm" onClick={() => { onReject(); onClose(); }}
+            style={{color:'var(--red,#c0392b)'}}>
+            <Icon name="x" size={13}/> Reject
+          </button>
+          <button className="btn btn-sm btn-primary" onClick={() => { onApprove(); onClose(); }}>
+            <Icon name="check" size={13}/> Approve
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectHours() {
+  const [totals, setTotals] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [view, setView] = React.useState('week');
+  const [offset, setOffset] = React.useState(0);
+  const projById = (id) => window.DATA.PROJECTS.find(p => p.id === id);
+
+  const getRange = React.useCallback(() => {
+    if (view === 'week') {
+      const d = new Date(); const day = d.getDay();
+      d.setDate(d.getDate() - day + (day === 0 ? -6 : 1) + offset * 7);
+      const from = d.toISOString().split('T')[0];
+      const fri = new Date(d); fri.setDate(d.getDate() + 4);
+      return { from, to: fri.toISOString().split('T')[0] };
+    } else {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + offset);
+      const from = d.toISOString().split('T')[0];
+      const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      return { from, to: last.toISOString().split('T')[0] };
+    }
+  }, [view, offset]);
+
+  const fmtRangeLabel = () => {
+    const { from, to } = getRange();
+    const s = new Date(from + 'T00:00:00');
+    if (view === 'week') {
+      const e = new Date(to + 'T00:00:00');
+      return s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + '   ' + e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    return s.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  };
+
+  React.useEffect(() => {
+    setLoading(true);
+    const { from, to } = getRange();
+    window.SupaEntries.teamSummary(from, to).then(rows => {
+      const byProject = {};
+      rows.forEach(e => {
+        if (!byProject[e.project_id]) byProject[e.project_id] = { hours: 0, users: new Set() };
+        byProject[e.project_id].hours += parseFloat(e.hours);
+        byProject[e.project_id].users.add(e.user_id);
+      });
+      const result = Object.entries(byProject)
+        .map(([id, d]) => ({ id, hours: d.hours, team: d.users.size }))
+        .sort((a, b) => b.hours - a.hours);
+      setTotals(result);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [view, offset]);
+
+  return (
+    <div className="card">
+      <div className="card-header" style={{flexWrap:'wrap',gap:6}}>
+        <div>
+          <h3 className="card-title">Project hours   {fmtRangeLabel()}</h3>
+          <div className="card-sub">{loading ? 'Loading ' : `${totals.length} active projects`}</div>
+        </div>
+        <div style={{display:'flex',gap:4,alignItems:'center'}}>
+          <div style={{display:'flex',background:'var(--surface-muted)',borderRadius:7,padding:2,gap:2}}>
+            {[['week','Week'],['month','Month']].map(([id,lbl]) => (
+              <button key={id} onClick={() => { setView(id); setOffset(0); }}
+                style={{padding:'3px 10px',borderRadius:5,border:'none',cursor:'pointer',fontSize:11,
+                  background: view===id?'white':'transparent', fontWeight: view===id?600:400,
+                  color: view===id?'var(--text)':'var(--text-muted)',
+                  boxShadow: view===id?'0 0 0 0.5px var(--border)':'none'
+                }}>{lbl}</button>
+            ))}
+          </div>
+          <button className="btn btn-sm" onClick={() => setOffset(o=>o-1)}> </button>
+          <button className="btn btn-sm" style={{fontSize:11}} onClick={() => setOffset(0)}>
+            {view==='week'?'This week':'This month'}
+          </button>
+          <button className="btn btn-sm" disabled={offset>=0} onClick={() => setOffset(o=>o+1)}> </button>
+        </div>
+      </div>
+      {loading ? (
+        <div style={{padding: '16px', color: 'var(--text-muted)', fontSize: 13}}>Loading </div>
+      ) : totals.length === 0 ? (
+        <div style={{padding: '16px', color: 'var(--text-muted)', fontSize: 13}}>No hours logged this period.</div>
+      ) : totals.map(pt => {
+        const p = projById(pt.id);
+        const budget = p ? 80 : 40;
+        const pct = Math.min(100, (pt.hours / budget) * 100);
+        const over = pt.hours > budget;
+        return (
+          <div key={pt.id} className="project-item">
+            <div>
+              <div className="pname">{p?.name || pt.id}</div>
+              <div className="pmeta">{p?.code || pt.id}   {p?.client || ''}   {pt.team} {pt.team === 1 ? 'person' : 'people'}</div>
+            </div>
+            <div className={`util-bar ${over ? 'over' : ''}`} style={{width: '100%'}}>
+              <span style={{width: `${pct}%`}}/>
+            </div>
+            <div className="phours">{pt.hours.toFixed(1)}h</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function WeekTotalsBars() {
+  const [values, setValues] = React.useState([0,0,0,0,0]);
+  const [dates, setDates] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [weekOffset, setWeekOffset] = React.useState(0);
+  const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri'];
+
+  const getWeekDates = React.useCallback((offset) => {
+    const d = new Date(); const day = d.getDay();
+    d.setDate(d.getDate() - day + (day === 0 ? -6 : 1) + offset * 7);
+    return Array.from({length: 5}, (_, i) => {
+      const x = new Date(d); x.setDate(d.getDate() + i);
+      return x.toISOString().split('T')[0];
+    });
+  }, []);
+
+  const fmtWeekLabel = (dates) => {
+    const s = new Date(dates[0] + 'T00:00:00');
+    const e = new Date(dates[4] + 'T00:00:00');
+    return s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + '   ' +
+           e.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  React.useEffect(() => {
+    const weekDates = getWeekDates(weekOffset);
+    setDates(weekDates);
+    setLoading(true);
+    window.SupaEntries.teamSummary(weekDates[0], weekDates[4]).then(rows => {
+      const byDay = [0,0,0,0,0];
+      rows.forEach(e => {
+        const idx = weekDates.indexOf(e.date);
+        if (idx >= 0) byDay[idx] += parseFloat(e.hours);
+      });
+      setValues(byDay);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [weekOffset]);
+
+  const max = Math.max(...values, 10);
+  const today = new Date().toISOString().split('T')[0];
+
+  return (
+    <div className="card">
+      <div className="card-header" style={{flexWrap:'wrap',gap:6}}>
+        <div>
+          <h3 className="card-title">Team hours   {dates.length ? fmtWeekLabel(dates) : ' '}</h3>
+          <div className="card-sub">Daily totals   all employees</div>
+        </div>
+        <div style={{display:'flex',gap:4}}>
+          <button className="btn btn-sm" onClick={() => setWeekOffset(w=>w-1)}> </button>
+          <button className="btn btn-sm" style={{fontSize:11}} onClick={() => setWeekOffset(0)} disabled={weekOffset===0}>
+            This week
+          </button>
+          <button className="btn btn-sm" disabled={weekOffset>=0} onClick={() => setWeekOffset(w=>w+1)}> </button>
+        </div>
+      </div>
+      <div className="day-bars" style={{height: 120}}>
+        {DAY_LABELS.map((d, i) => {
+          const isToday = dates[i] === today && weekOffset === 0;
+          return (
+            <div key={d} className="day-bar">
+              <div className="bar" style={{height: '100%', position: 'relative'}}>
+                <div className="fill" style={{
+                  height: loading ? '0%' : `${(values[i]/max)*100}%`,
+                  background: isToday ? 'var(--accent)' : undefined,
+                  transition: 'height 0.4s ease',
+                }}/>
+                <div style={{
+                  position: 'absolute', top: -18, left: 0, right: 0, textAlign: 'center',
+                  fontSize: 10.5, fontFamily: 'var(--font-mono)',
+                  color: isToday ? 'var(--accent)' : 'var(--text-muted)',
+                  fontWeight: isToday ? 600 : 400,
+                }}>{values[i] > 0 ? values[i].toFixed(1) + 'h' : ' '}</div>
+              </div>
+              <div className="label" style={{fontWeight: isToday ? 600 : 400}}>{d}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+function AppUsageDonut({ slices, total, studioUtil }) {
+  const [hovered, setHovered] = React.useState(null);
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => { const t = setTimeout(() => setMounted(true), 30); return () => clearTimeout(t); }, []);
+
+  const cx = 75, cy = 75, R = 62, r = 40;
+  let cumAngle = -Math.PI / 2;
+  const arcs = slices.map((s, i) => {
+    const frac = s.value / total;
+    const start = cumAngle;
+    const end = cumAngle + frac * Math.PI * 2;
+    cumAngle = end;
+    const midAngle = (start + end) / 2;
+    const large = frac > 0.5 ? 1 : 0;
+    const x1 = cx + R * Math.cos(start), y1 = cy + R * Math.sin(start);
+    const x2 = cx + R * Math.cos(end),   y2 = cy + R * Math.sin(end);
+    const x3 = cx + r * Math.cos(end),   y3 = cy + r * Math.sin(end);
+    const x4 = cx + r * Math.cos(start), y4 = cy + r * Math.sin(start);
+    const d = `M ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2} L ${x3} ${y3} A ${r} ${r} 0 ${large} 0 ${x4} ${y4} Z`;
+    // Offset for hover "pop-out"
+    const ox = Math.cos(midAngle) * 4;
+    const oy = Math.sin(midAngle) * 4;
+    return { ...s, d, frac, ox, oy, i };
+  });
+
+  const active = hovered ? arcs.find(a => a.k === hovered) : null;
+  const centerVal = active ? `${(active.frac * 100).toFixed(0)}%` : `${Math.round(studioUtil)}%`;
+  const centerLbl = active ? active.label : 'utilization';
+
+  return (
+    <div className="au-donut" onMouseLeave={() => setHovered(null)}>
+      <svg viewBox="0 0 150 150" className={`au-donut-svg ${mounted ? 'mounted' : ''}`}>
+        <defs>
+          <filter id="au-donut-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodOpacity="0.18"/>
+          </filter>
+        </defs>
+        <circle cx={cx} cy={cy} r={R} fill="#f4f6fa"/>
+        {arcs.map(a => (
+          <path
+            key={a.k}
+            d={a.d}
+            fill={a.color}
+            className="au-donut-slice"
+            style={{
+              transform: hovered === a.k ? `translate(${a.ox}px, ${a.oy}px)` : 'translate(0,0)',
+              filter: hovered && hovered !== a.k ? 'saturate(0.3) opacity(0.55)' : (hovered === a.k ? 'url(#au-donut-shadow)' : 'none'),
+              transitionDelay: `${a.i * 45}ms`,
+            }}
+            onMouseEnter={() => setHovered(a.k)}
+          />
+        ))}
+        <circle cx={cx} cy={cy} r={r - 1} fill="#fff" pointerEvents="none"/>
+        <text x={cx} y={cy - 2} textAnchor="middle" className="au-donut-v" pointerEvents="none">{centerVal}</text>
+        <text x={cx} y={cy + 14} textAnchor="middle" className="au-donut-l" pointerEvents="none">{centerLbl}</text>
+      </svg>
+    </div>
+  );
+}
+
+function AppUsageBreakdown() {
+  const [range, setRange] = React.useState('today');
+  const [sortBy, setSortBy] = React.useState('billable'); // 'billable' | 'name' | 'util'
+
+  const multiplier = range === 'today' ? 1 : range === 'week' ? 5 : 22;
+
+  const rowsBase = [
+    { emp: 'afsal',   apps: { revit: 4.21, acad: 1.20, sketch: 0.54, teams: 0.41, outlook: 0.27, pdf: 0.12 }, other: 0.70, target: 8 },
+    { emp: 'sandra',  apps: { revit: 5.05, acad: 0.55, sketch: 0.85, teams: 0.35, outlook: 0.20, pdf: 0.10 }, other: 0.45, target: 8 },
+    { emp: 'rivin',   apps: { revit: 2.10, acad: 3.10, sketch: 0.10, teams: 0.20, outlook: 0.35, pdf: 0.45 }, other: 0.55, target: 8 },
+    { emp: 'mehnas',  apps: { revit: 5.40, acad: 1.15, sketch: 0.10, teams: 0.30, outlook: 0.25, pdf: 0.20 }, other: 0.30, target: 8 },
+    { emp: 'elbin',   apps: { revit: 3.20, acad: 1.10, sketch: 0.55, teams: 0.35, outlook: 0.40, pdf: 0.20 }, other: 0.85, target: 8 },
+  ];
+
+  const rows = rowsBase.map(r => {
+    const apps = {};
+    Object.keys(r.apps).forEach(k => { apps[k] = +(r.apps[k] * multiplier).toFixed(2); });
+    const other = +(r.other * multiplier).toFixed(2);
+    const billable = Object.values(apps).reduce((s, x) => s + x, 0);
+    const total = billable + other;
+    const util = total > 0 ? Math.min(100, (billable / (r.target * multiplier)) * 100) : 0;
+    return { ...r, apps, other, billable, total, util };
+  });
+
+  const sortedRows = [...rows].sort((a, b) => {
+    if (sortBy === 'billable') return b.billable - a.billable;
+    if (sortBy === 'util') return b.util - a.util;
+    return 0;
+  });
+
+  // Studio totals by app
+  const appTotals = Object.keys(APP_META).map(k => ({
+    k,
+    hours: rows.reduce((s, r) => s + (r.apps[k] || 0), 0),
+  })).sort((a, b) => b.hours - a.hours);
+  const appTotalSum = appTotals.reduce((s, a) => s + a.hours, 0);
+  const studioOther = rows.reduce((s, r) => s + r.other, 0);
+  const studioTotal = appTotalSum + studioOther;
+
+  const empById = (id) => window.DATA.EMPLOYEES.find(e => e.id === id);
+  const fmt = (h) => {
+    if (h === 0) return ' ';
+    const hh = Math.floor(h);
+    const mm = Math.round((h - hh) * 60);
+    return `${hh}h ${String(mm).padStart(2, '0')}m`;
+  };
+  const fmtDec = (h) => h.toFixed(1);
+
+  const rangeLabel = range === 'today' ? 'today' : range === 'week' ? 'this week' : 'this month';
+  const studioTarget = rows.length * 8 * multiplier;
+  const studioUtil = Math.min(100, (appTotalSum / studioTarget) * 100);
+  const topApp = appTotals[0];
+  const topEmp = [...rows].sort((a, b) => b.util - a.util)[0];
+  const topEmpObj = empById(topEmp.emp);
+
+  const donutSlices = [
+    ...appTotals.map(a => ({
+      k: a.k, label: APP_META[a.k].name, value: a.hours, color: APP_META[a.k].color,
+    })),
+    { k: 'other', label: 'Other (not billed)', value: studioOther, color: '#c4cbd6' },
+  ];
+
+  return (
+    <>
+      {/* Stats strip   matches Activity Monitor pattern */}
+      <div className="stats-row" style={{marginTop: 6}}>
+        <div className="card stat">
+          <div className="stat-label">Studio billable   {rangeLabel}</div>
+          <div className="stat-value">{fmtDec(appTotalSum)}<span className="unit">hrs</span></div>
+          <div className="stat-delta">of {fmtDec(studioTarget)}h target   {fmtDec(studioOther)}h not billed</div>
+        </div>
+        <div className="card stat">
+          <div className="stat-label">Avg. utilization</div>
+          <div className="stat-value" style={{color: studioUtil >= 85 ? '#1d8a4a' : studioUtil >= 70 ? '#a87220' : '#a52822'}}>
+            {Math.round(studioUtil)}<span className="unit">%</span>
+          </div>
+          <div className="stat-delta">across {rows.length} employees</div>
+        </div>
+        <div className="card stat">
+          <div className="stat-label">Top application</div>
+          <div className="stat-value" style={{fontSize: 22}}>
+            <span className={`bb-dot bb-${topApp.k}`} style={{marginRight: 8, width: 12, height: 12}}/>
+            {APP_META[topApp.k].name}
+          </div>
+          <div className="stat-delta">{fmtDec(topApp.hours)}h   {Math.round((topApp.hours / studioTotal) * 100)}% of tracked</div>
+        </div>
+        <div className="card stat">
+          <div className="stat-label">Highest utilization</div>
+          <div className="stat-value" style={{fontSize: 22}}>{topEmpObj.name.split(' ')[0]}</div>
+          <div className="stat-delta">{Math.round(topEmp.util)}%   {fmtDec(topEmp.billable)}h billable</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header" style={{display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap'}}>
+          <div>
+            <h3 className="card-title">Time breakdown by application</h3>
+            <div className="card-sub">Desktop agent   focus time only (app active + mouse/keyboard within 2 min)</div>
+          </div>
+          <div style={{flex: 1}}/>
+          <div className="am-filters">
+            {[['today','Today'],['week','This week'],['month','This month']].map(([k,l]) => (
+              <button key={k} className={`am-filter ${range === k ? 'on' : ''}`} onClick={() => setRange(k)}>{l}</button>
+            ))}
+          </div>
+          <button className="btn btn-sm"><Icon name="download" size={14}/> Export</button>
+        </div>
+
+        {/* Donut + legend split */}
+        <div className="au-split">
+          <AppUsageDonut slices={donutSlices} total={studioTotal} studioUtil={studioUtil}/>
+          <div className="au-split-legend">
+            <div className="au-split-title">Studio time mix   {rangeLabel}</div>
+            <div className="au-split-rows">
+              {donutSlices.map(s => {
+                const pct = (s.value / studioTotal) * 100;
+                return (
+                  <div key={s.k} className="au-split-row">
+                    <span className="bb-dot" style={{background: s.color}}/>
+                    <span className="au-split-name">{s.label}</span>
+                    <div className="au-split-bar"><div style={{width: `${pct}%`, background: s.color}}/></div>
+                    <span className="au-split-hrs">{fmt(s.value)}</span>
+                    <span className="au-split-pct">{pct.toFixed(1)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="au-split-foot">
+              Hover any slice to isolate it   totals update live when you change the range
+            </div>
+          </div>
+        </div>
+
+        {/* Per-employee list   same row shape as Activity Monitor */}
+        <div className="am-list">
+          <div className="am-row am-row-head">
+            <div>
+              <button className="tb-sort" onClick={() => setSortBy('name')}>Employee</button>
+            </div>
+            <div className="am-now-label" style={{marginBottom: 0}}>Top apps</div>
+            <div className="am-now-label" style={{marginBottom: 0}}>Distribution</div>
+            <div style={{textAlign: 'right'}}>
+              <button className={`tb-sort ${sortBy === 'billable' ? 'on' : ''}`} onClick={() => setSortBy('billable')}>
+                Billable {sortBy === 'billable' ? ' ' : ''}
+              </button>
+            </div>
+            <div style={{textAlign: 'right'}}>
+              <button className={`tb-sort ${sortBy === 'util' ? 'on' : ''}`} onClick={() => setSortBy('util')}>
+                Util {sortBy === 'util' ? ' ' : ''}
+              </button>
+            </div>
+          </div>
+          {sortedRows.map(r => {
+            const e = empById(r.emp);
+            // Top 3 apps by hours
+            const topApps = Object.keys(r.apps)
+              .map(k => ({ k, h: r.apps[k] }))
+              .filter(a => a.h > 0)
+              .sort((a, b) => b.h - a.h)
+              .slice(0, 3);
+            return (
+              <div key={r.emp} className="am-row am-row-static">
+                <div className="am-who">
+                  <div className="avatar sm">{e.initials}</div>
+                  <div style={{minWidth: 0}}>
+                    <div className="am-name">{e.name}</div>
+                    <div className="am-sub">{e.role}</div>
+                  </div>
+                </div>
+                <div className="am-now">
+                  <div className="au-chips">
+                    {topApps.map(a => (
+                      <span key={a.k} className="au-chip" title={`${APP_META[a.k].name}   ${fmt(a.h)}`}>
+                        <i className={`bb-dot bb-${a.k}`}/>
+                        {APP_META[a.k].name}
+                        <span className="au-chip-h">{fmt(a.h)}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="am-bar-col">
+                  <div className="au-bar">
+                    {Object.keys(APP_META).map(k => (
+                      r.apps[k] > 0 && <div
+                        key={k}
+                        className={`au-seg bb-${k}`}
+                        style={{width: `${(r.apps[k] / r.total) * 100}%`}}
+                        title={`${APP_META[k].name}   ${fmt(r.apps[k])}`}
+                      />
+                    ))}
+                    {r.other > 0 && <div className="au-seg bb-other" style={{width: `${(r.other / r.total) * 100}%`}} title={`Other   ${fmt(r.other)}`}/>}
+                  </div>
+                  <div className="am-totals">
+                    <span className="am-billable">{fmtDec(r.billable)}h billable</span>
+                    <span className="am-other">  {fmtDec(r.other)}h other</span>
+                  </div>
+                </div>
+                <div style={{textAlign: 'right', fontVariantNumeric: 'tabular-nums'}}>
+                  <div className="am-util-val">{fmtDec(r.billable)}<span style={{fontSize: 12, color: 'var(--text-muted)', fontWeight: 500}}>h</span></div>
+                  <div className="am-util-label">of {fmtDec(r.target * multiplier)}h</div>
+                </div>
+                <div style={{textAlign: 'right'}}>
+                  <div className={`tb-util-pill ${r.util >= 85 ? 'good' : r.util >= 70 ? 'ok' : 'low'}`}>
+                    {Math.round(r.util)}%
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          <div className="am-row am-row-foot">
+            <div className="am-foot-label">Studio total</div>
+            <div className="am-foot-apps">
+              {appTotals.slice(0, 3).map(a => (
+                <span key={a.k} className="au-chip">
+                  <i className={`bb-dot bb-${a.k}`}/>{APP_META[a.k].name}<span className="au-chip-h">{fmtDec(a.hours)}h</span>
+                </span>
+              ))}
+            </div>
+            <div/>
+            <div style={{textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600}}>{fmtDec(appTotalSum)}h</div>
+            <div style={{textAlign: 'right'}}>
+              <div className={`tb-util-pill ${studioUtil >= 85 ? 'good' : studioUtil >= 70 ? 'ok' : 'low'}`}>
+                {Math.round(studioUtil)}%
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ManagerView({ activeNav }) {
+  const nav = activeNav || 'overview';
+  const todayStr = new Date().toLocaleDateString('en-GB', {weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const weekNum = Math.ceil((new Date() - new Date(new Date().getFullYear(),0,1)) / 604800000);
+
+  return (
+    <div className="content">
+
+      {/* -- Overview (default) ------------------------------- */}
+      {(nav === 'overview' || nav === 'dashboard') && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>Studio snapshot</h2>
+            <span className="hint">{todayStr}   Week {weekNum}</span>
+          </div>
+          <ManagerStats />
+          <TeamOverviewTable />
+          <div className="section-title">
+            <h2>Projects & approvals</h2>
+            <span className="hint">This week   all active projects</span>
+          </div>
+          <div className="col-8-4">
+            <ProjectHours />
+            <div className="col-stack">
+              <Approvals />
+              <WeekTotalsBars />
+            </div>
+          </div>
+          <AppUsageBreakdown />
+        </>
+      )}
+
+      {/* -- Approvals ---------------------------------------- */}
+      {nav === 'approvals' && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>Pending approvals</h2>
+            <span className="hint">Review and approve submitted timesheets</span>
+          </div>
+          <Approvals />
+        </>
+      )}
+
+      {/* -- Projects ----------------------------------------- */}
+      {nav === 'projects' && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>Projects</h2>
+            <span className="hint">Hours by project this week</span>
+          </div>
+          <ProjectHours />
+          <div className="section-title">
+            <h2>Weekly team hours</h2>
+            <span className="hint">Daily breakdown across the studio</span>
+          </div>
+          <WeekTotalsBars />
+        </>
+      )}
+
+      {/* -- Reports ------------------------------------------ */}
+      {nav === 'reports' && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>Reports</h2>
+            <span className="hint">Export team timesheets for payroll</span>
+          </div>
+          <div className="card" style={{padding:'24px 28px'}}>
+            <div className="card-header" style={{marginBottom:20}}>
+              <div>
+                <h3 className="card-title">Team timesheet export</h3>
+                <div className="card-sub">Download this week's team data as Excel or PDF</div>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+              <button
+                className="btn btn-primary"
+                style={{display:'flex',alignItems:'center',gap:8,padding:'10px 20px'}}
+                onClick={() => window.exportTeamExcel && window.exportTeamExcel()}>
+                <Icon name="download" size={15}/> Export Team Excel
+              </button>
+              <button
+                className="btn"
+                style={{display:'flex',alignItems:'center',gap:8,padding:'10px 20px',color:'#102347',borderColor:'#102347'}}
+                onClick={() => window.exportTeamPDF && window.exportTeamPDF()}>
+                <Icon name="download" size={15}/> Export Team PDF
+              </button>
+            </div>
+            <div style={{marginTop:24,paddingTop:20,borderTop:'1px solid var(--border)'}}>
+              <div className="card-sub" style={{marginBottom:12}}>Team summary   this week</div>
+              <ManagerStats />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* -- Activity ----------------------------------------- */}
+      {nav === 'activity' && {window.ActivityMonitor && React.createElement(window.ActivityMonitor)}}
+
+      {/* -- Users -------------------------------------------- */}
+      {nav === 'users' && (
+        <>
+          <div className="section-title" style={{marginTop:0}}>
+            <h2>Users & access</h2>
+            <span className="hint">Add accounts, reset passwords, manage roles</span>
+          </div>
+          {window.UsersAdmin && React.createElement(window.UsersAdmin)}
+        </>
+      )}
+
+    </div>
+  );
+}
+
+window.ManagerView = ManagerView;
+
+
+
+
+// ======== export.jsx ========
+
+// -- NLA Export Module ---------------------------------------------------------
+// Professional Excel + PDF exports with NLA branding
+// Logo: 817x178px (4.59:1 ratio). At 10mm tall = 45.9mm wide
+
+const NLA_LOGO_B64 = 'data:image/png;base64,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';
+const NLA_NAVY   = [16, 35, 71];
+const NLA_GOLD   = [201, 168, 76];
+const NLA_LIGHT  = [232, 237, 244];
+const NLA_WHITE  = [255, 255, 255];
+const LOGO_W     = 45.9;  // mm   correct for 817x178 logo at 10mm tall
+const LOGO_H     = 10;    // mm
+
+// -- Date helpers --------------------------------------------------------------
+function getWeekDates(offset) {
+  offset = offset || 0;
+  const d = new Date();
+  const day = d.getDay();
+  d.setDate(d.getDate() - day + (day === 0 ? -6 : 1) + offset * 7);
+  return Array.from({ length: 5 }, function(_, i) {
+    const x = new Date(d); x.setDate(d.getDate() + i);
+    return x.toISOString().split('T')[0];
+  });
+}
+
+function getMonthDates(offset) {
+  offset = offset || 0;
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + offset);
+  const from = d.toISOString().split('T')[0];
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return { from, to: last.toISOString().split('T')[0] };
+}
+
+function fmtDate(iso) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function fmtWeekLabel(dates) {
+  const s = new Date(dates[0] + 'T00:00:00');
+  const e = new Date(dates[4] + 'T00:00:00');
+  return s.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) + '   ' +
+         e.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+// -- PDF header band helper -----------------------------------------------------
+function pdfHeader(doc, PW, title, subtitle, showLogo) {
+  // Navy band
+  doc.setFillColor(NLA_NAVY[0], NLA_NAVY[1], NLA_NAVY[2]);
+  doc.rect(0, 0, PW, 30, 'F');
+
+  // Logo (correct aspect ratio: 45.9mm wide x 10mm tall)
+  if (showLogo !== false) {
+    try { doc.addImage(NLA_LOGO_B64, 'PNG', 8, 10, LOGO_W, LOGO_H); } catch(e) {}
+  }
+
+  // Title + subtitle at right
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text(title, PW - 8, 13, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(NLA_GOLD[0], NLA_GOLD[1], NLA_GOLD[2]);
+  doc.text(subtitle, PW - 8, 20, { align: 'right' });
+  doc.setTextColor(160, 180, 210);
+  doc.text('Nature Landscape Architects', PW - 8, 26, { align: 'right' });
+}
+
+function pdfFooter(doc, PW, PH, pageNum, pageCount) {
+  doc.setFillColor(NLA_NAVY[0], NLA_NAVY[1], NLA_NAVY[2]);
+  doc.rect(0, PH - 10, PW, 10, 'F');
+  doc.setTextColor(160, 180, 210);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.text('Nature Landscape Architects     Confidential     Internal Use Only', 8, PH - 4);
+  doc.setTextColor(NLA_GOLD[0], NLA_GOLD[1], NLA_GOLD[2]);
+  doc.text('NLA Timesheet', PW / 2, PH - 4, { align: 'center' });
+  doc.setTextColor(160, 180, 210);
+  doc.text('Page ' + pageNum + ' of ' + pageCount, PW - 8, PH - 4, { align: 'right' });
+}
+
+function pdfInfoBar(doc, PW, items, yStart) {
+  // Light info bar
+  doc.setFillColor(NLA_LIGHT[0], NLA_LIGHT[1], NLA_LIGHT[2]);
+  doc.rect(0, yStart, PW, 16, 'F');
+  items.forEach(function(item, i) {
+    const x = 8 + i * (PW - 16) / items.length;
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 120, 150);
+    doc.setFontSize(6.5);
+    doc.text(item[0].toUpperCase(), x, yStart + 5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(NLA_NAVY[0], NLA_NAVY[1], NLA_NAVY[2]);
+    doc.setFontSize(8.5);
+    doc.text(item[1], x, yStart + 12);
+  });
+}
+
+// -- EXPORT DIALOG STATE --------------------------------------------------------
+window._exportOptions = {
+  includeSummary:   true,
+  includeDailyGrid: true,
+  includeProjects:  true,
+  includeUtil:      false,  // user said they don't want utilization by default
+  includeStatus:    true,
+};
+
+// -- Export Options Dialog ------------------------------------------------------
+// Export Options Dialog
+function ExportOptionsDialog({ open, onClose, onExport, type }) {
+  const [opts, setOpts] = React.useState(Object.assign({}, window._exportOptions));
+  if (!open) return null;
+
+  const toggle = (key) => setOpts(function(o) {
+    const n = Object.assign({}, o);
+    n[key] = !n[key];
+    return n;
+  });
+
+  const doExport = () => {
+    window._exportOptions = Object.assign({}, opts);
+    onExport(opts);
+    onClose();
+  };
+
+  const checkboxes = [
+    ['includeSummary',   'Summary section (hours, employee, week)'],
+    ['includeDailyGrid', 'Weekly time grid (hours per project per day)'],
+    ['includeProjects',  'Project breakdown'],
+    ['includeUtil',      'Utilization % column'],
+    ['includeStatus',    'Approval status column'],
+  ];
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={function(e){e.stopPropagation();}} style={{maxWidth:400}}>
+        <div style={{padding:'18px 24px 12px',borderBottom:'1px solid var(--border)'}}>
+          <h3 style={{margin:0,fontSize:15}}>Export options</h3>
+          <p style={{margin:'4px 0 0',fontSize:12,color:'var(--text-muted)'}}>
+            Choose what to include in your {type === 'pdf' ? 'PDF' : 'Excel'} export
+          </p>
+        </div>
+        <div style={{padding:'16px 24px'}}>
+          {checkboxes.map(function(c) {
+            return (
+              <label key={c[0]} style={{display:'flex',alignItems:'center',gap:10,marginBottom:12,cursor:'pointer',fontSize:13}}>
+                <input type="checkbox" checked={opts[c[0]]} onChange={function(){toggle(c[0]);}}
+                  style={{width:16,height:16,accentColor:'var(--accent)',cursor:'pointer'}}/>
+                {c[1]}
+              </label>
+            );
+          })}
+        </div>
+        <div style={{padding:'0 24px 20px',display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={doExport}>
+            Export {type === 'pdf' ? 'PDF' : 'Excel'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// -- EMPLOYEE EXCEL EXPORT ------------------------------------------------------
+async function exportToExcel(user, weekOffset, opts) {
+  opts = opts || window._exportOptions;
+  weekOffset = weekOffset || 0;
+  const dates = getWeekDates(weekOffset);
+  const dayLabels = dates.map(function(d) {
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  });
+  const weekLabel = fmtWeekLabel(dates);
+  const today = new Date().toISOString().split('T')[0];
+  const XLSX = window.XLSX;
+
+  const entries = await window.SupaEntries.forWeekGrid(user.id, dates[0]);
+
+  const projMap = {};
+  entries.forEach(function(e) {
+    if (!projMap[e.project_id]) projMap[e.project_id] = { name: e.project_name || e.project_id, hours: [0,0,0,0,0] };
+    const di = dates.indexOf(e.date);
+    if (di >= 0) projMap[e.project_id].hours[di] += parseFloat(e.hours);
+  });
+  (window.DATA.PROJECTS || []).forEach(function(p) {
+    if (!projMap[p.id]) projMap[p.id] = { name: p.name, hours: [0,0,0,0,0] };
+  });
+
+  const projects = Object.values(projMap);
+  const grand = projects.reduce(function(s,r) { return s + r.hours.reduce(function(a,b){return a+b;},0); }, 0);
+  const isSubmitted = entries.some(function(e){return e.status === 'submitted';});
+
+  const wb = XLSX.utils.book_new();
+  const wsData = [];
+
+  // Summary section
+  if (opts.includeSummary) {
+    wsData.push(['Nature Landscape Architects', '', '', '', '', '', '']);
+    wsData.push(['Weekly Timesheet', '', '', '', '', '', '']);
+    wsData.push(['']);
+    wsData.push(['Employee:', user.name, '', 'Role:', user.role || ' ', '', '']);
+    wsData.push(['Week:', weekLabel, '', 'Generated:', fmtDate(today), '', '']);
+    if (opts.includeStatus) {
+      wsData.push(['Status:', isSubmitted ? 'Submitted' : 'Draft', '', '', '', '', '']);
+    }
+    wsData.push(['Total Hours:', grand.toFixed(2), '', 'Target:', '45.00', '', '']);
+    wsData.push(['']);
+  }
+
+  // Daily grid section
+  if (opts.includeDailyGrid) {
+    wsData.push(['Project'].concat(dayLabels).concat(['Total']));
+    const startRow = wsData.length;
+    projects.forEach(function(p) {
+      const total = p.hours.reduce(function(a,b){return a+b;},0);
+      wsData.push([p.name].concat(p.hours.map(function(h){ return h > 0 ? h : ''; })).concat([total > 0 ? total : '']));
+    });
+    const endRow = wsData.length;
+    wsData.push(['DAILY TOTAL'].concat([0,1,2,3,4].map(function(ci){
+      return {f:'SUM('+['B','C','D','E','F'][ci]+startRow+':'+['B','C','D','E','F'][ci]+endRow+')'};
+    })).concat([{f:'SUM(G'+startRow+':G'+endRow+')'}]));
+    wsData.push(['']);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols'] = [{wch:38},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12}];
+  ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:6}},{s:{r:1,c:0},e:{r:1,c:6}}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Weekly Timesheet');
+
+  // Daily entries sheet
+  if (opts.includeDailyGrid) {
+    const rawEntries = entries.slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
+    const ws2Data = [
+      ['Nature Landscape Architects   Daily Entries'],
+      ['Employee: ' + user.name + '  |  Week: ' + weekLabel],
+      [''],
+    ];
+    const headers = ['Date', 'Project', 'Task / Description', 'Type', 'Hours'];
+    if (opts.includeStatus) headers.push('Status');
+    ws2Data.push(headers);
+    rawEntries.forEach(function(e) {
+      const row = [fmtDate(e.date), e.project_name || e.project_id, e.title, e.task_type === 'grid' ? 'Timesheet' : e.task_type, parseFloat(e.hours)];
+      if (opts.includeStatus) row.push(e.status.charAt(0).toUpperCase() + e.status.slice(1));
+      ws2Data.push(row);
+    });
+    const ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
+    ws2['!cols'] = [{wch:16},{wch:32},{wch:42},{wch:14},{wch:10},{wch:14}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Daily Entries');
+  }
+
+  XLSX.writeFile(wb, 'NLA_Timesheet_' + user.name.replace(/\s+/g,'_') + '_' + dates[0] + '.xlsx');
+}
+
+// -- EMPLOYEE PDF EXPORT --------------------------------------------------------
+async function exportToPDF(user, weekOffset, opts) {
+  opts = opts || window._exportOptions;
+  weekOffset = weekOffset || 0;
+  const jsPDF = window.jspdf.jsPDF;
+  const dates = getWeekDates(weekOffset);
+  const dayLabels = dates.map(function(d) {
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  });
+  const weekLabel = fmtWeekLabel(dates);
+  const today = new Date().toISOString().split('T')[0];
+
+  const entries = await window.SupaEntries.forWeekGrid(user.id, dates[0]);
+  const isSubmitted = entries.some(function(e){ return e.status === 'submitted'; });
+
+  const projMap = {};
+  entries.forEach(function(e) {
+    if (!projMap[e.project_id]) projMap[e.project_id] = { name: e.project_name || e.project_id, hours: [0,0,0,0,0] };
+    const di = dates.indexOf(e.date);
+    if (di >= 0) projMap[e.project_id].hours[di] += parseFloat(e.hours);
+  });
+  (window.DATA.PROJECTS || []).forEach(function(p) {
+    if (!projMap[p.id]) projMap[p.id] = { name: p.name, hours: [0,0,0,0,0] };
+  });
+
+  const projects = Object.values(projMap);
+  const colTotals = [0,1,2,3,4].map(function(ci){ return projects.reduce(function(s,r){return s+r.hours[ci];},0); });
+  const grand = colTotals.reduce(function(a,b){return a+b;},0);
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const PW = doc.internal.pageSize.getWidth();
+  const PH = doc.internal.pageSize.getHeight();
+
+  // Page 1   Header
+  pdfHeader(doc, PW, 'Weekly Timesheet Report', weekLabel);
+
+  // Status badge
+  const badgeColor = isSubmitted ? [29,142,74] : [180,140,30];
+  doc.setFillColor(badgeColor[0], badgeColor[1], badgeColor[2]);
+  doc.roundedRect(PW - 42, 8, 34, 10, 2, 2, 'F');
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.text(isSubmitted ? 'SUBMITTED' : 'DRAFT', PW - 25, 14.5, { align: 'center' });
+
+  // Info bar
+  if (opts.includeSummary) {
+    const infoItems = [
+      ['Employee', user.name],
+      ['Role', user.role || ' '],
+      ['Week', weekLabel],
+      ['Total Hours', grand.toFixed(2) + 'h'],
+      ['Generated', fmtDate(today)],
+    ];
+    pdfInfoBar(doc, PW, infoItems, 30);
+  }
+
+  // Weekly grid table
+  if (opts.includeDailyGrid) {
+    const colStyles = { 0: { halign: 'left', cellWidth: 65, fontStyle: 'bold' } };
+    if (opts.includeUtil) {
+      colStyles[6] = { halign: 'center', fontStyle: 'bold', textColor: NLA_NAVY };
+    }
+
+    const tableHead = [['Project'].concat(dayLabels).concat(['Total'])];
+    const tableBody = projects.map(function(p) {
+      return [p.name].concat(p.hours.map(function(h){ return h > 0 ? h.toFixed(2) : ' '; })).concat([
+        p.hours.reduce(function(a,b){return a+b;},0) > 0 ? p.hours.reduce(function(a,b){return a+b;},0).toFixed(2) : ' '
+      ]);
+    });
+    tableBody.push(['DAILY TOTAL'].concat(colTotals.map(function(h){ return h>0?h.toFixed(2):' '; })).concat([grand>0?grand.toFixed(2):' ']));
+
+    doc.autoTable({
+      head: tableHead, body: tableBody, startY: opts.includeSummary ? 48 : 34,
+      margin: { left: 8, right: 8 },
+      styles: { font: 'helvetica', fontSize: 8, cellPadding: 3, textColor: [30,40,60] },
+      headStyles: { fillColor: NLA_NAVY, textColor: NLA_WHITE, fontStyle: 'bold', fontSize: 7.5, halign: 'center' },
+      columnStyles: colStyles,
+      alternateRowStyles: { fillColor: [245,248,252] },
+      didParseCell: function(data) {
+        if (data.row.index === tableBody.length - 1) {
+          data.cell.styles.fillColor = NLA_NAVY;
+          data.cell.styles.textColor = NLA_WHITE;
+          data.cell.styles.fontStyle = 'bold';
+        }
+      },
+    });
+  }
+
+  // Page 2   Daily entries
+  if (opts.includeDailyGrid) {
+    doc.addPage();
+    pdfHeader(doc, PW, 'Daily Time Entries', user.name + '     ' + weekLabel);
+
+    const sorted = entries.slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
+    const headers = [['Date', 'Project', 'Task / Description', 'Type', 'Hours']];
+    if (opts.includeStatus) headers[0].push('Status');
+
+    const entriesBody = sorted.map(function(e) {
+      const row = [fmtDate(e.date), e.project_name || e.project_id, e.title, e.task_type === 'grid' ? 'Timesheet' : (e.task_type || ' '), parseFloat(e.hours).toFixed(2)];
+      if (opts.includeStatus) row.push(e.status.charAt(0).toUpperCase() + e.status.slice(1));
+      return row;
+    });
+
+    const colStyles2 = {
+      0: { cellWidth: 28 }, 1: { cellWidth: 55 },
+      4: { halign: 'center', fontStyle: 'bold', textColor: NLA_NAVY },
+    };
+    if (opts.includeStatus) colStyles2[5] = { halign: 'center', cellWidth: 24 };
+
+    doc.autoTable({
+      head: headers,
+      body: entriesBody.length > 0 ? entriesBody : [['No entries','','','','']],
+      startY: 34, margin: { left:8, right:8 },
+      styles: { font:'helvetica', fontSize:8, cellPadding:3, textColor:[30,40,60] },
+      headStyles: { fillColor: NLA_NAVY, textColor: NLA_WHITE, fontStyle:'bold', fontSize:7.5 },
+      columnStyles: colStyles2,
+      alternateRowStyles: { fillColor:[245,248,252] },
+      didParseCell: function(data) {
+        if (opts.includeStatus && data.column.index === 5 && data.section === 'body') {
+          if (data.cell.raw === 'Approved') { data.cell.styles.textColor=[29,142,74]; data.cell.styles.fontStyle='bold'; }
+          if (data.cell.raw === 'Submitted') { data.cell.styles.textColor=[180,140,30]; data.cell.styles.fontStyle='bold'; }
+        }
+      },
+    });
+  }
+
+  // Footer all pages
+  const pageCount = doc.internal.getNumberOfPages();
+  for (var i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    pdfFooter(doc, PW, PH, i, pageCount);
+  }
+
+  doc.save('NLA_Timesheet_' + user.name.replace(/\s+/g,'_') + '_' + dates[0] + '.pdf');
+}
+
+// -- EXPORT BUTTONS COMPONENT ---------------------------------------------------
+function ExportButtons({ user, weekOffset, size }) {
+  weekOffset = weekOffset || 0;
+  size = size || 'sm';
+  const [exporting, setExporting] = React.useState(null);
+  const [dialog, setDialog] = React.useState(null); // 'pdf' | 'excel' | null
+
+  const doExport = async (type, opts) => {
+    setExporting(type);
+    try {
+      if (type === 'excel') await exportToExcel(user, weekOffset, opts);
+      if (type === 'pdf')   await exportToPDF(user, weekOffset, opts);
+    } catch(e) { console.error('Export error:', e); alert('Export failed: ' + e.message); }
+    setExporting(null);
+  };
+
+  return (
+    <>
+      <button className={'btn btn-' + size} onClick={() => setDialog('excel')} disabled={!!exporting}
+        style={{display:'flex',alignItems:'center',gap:5}}>
+        <Icon name="download" size={13}/>
+        {exporting === 'excel' ? 'Exporting ' : 'Excel'}
+      </button>
+      <button className={'btn btn-' + size} onClick={() => setDialog('pdf')} disabled={!!exporting}
+        style={{display:'flex',alignItems:'center',gap:5,color:'#102347',borderColor:'#102347'}}>
+        <Icon name="download" size={13}/>
+        {exporting === 'pdf' ? 'Exporting ' : 'PDF'}
+      </button>
+      <ExportOptionsDialog
+        open={dialog === 'excel'}
+        type="excel"
+        onClose={() => setDialog(null)}
+        onExport={(opts) => doExport('excel', opts)}
+      />
+      <ExportOptionsDialog
+        open={dialog === 'pdf'}
+        type="pdf"
+        onClose={() => setDialog(null)}
+        onExport={(opts) => doExport('pdf', opts)}
+      />
+    </>
+  );
+}
+
+// -- TEAM EXCEL EXPORT ----------------------------------------------------------
+async function exportTeamExcel(opts) {
+  opts = opts || window._exportOptions;
+  const XLSX = window.XLSX;
+  const today = new Date().toISOString().split('T')[0];
+  const dates = getWeekDates(0);
+  const weekLabel = fmtWeekLabel(dates);
+  const dayLabels = dates.map(function(d) {
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+  });
+
+  const results = await Promise.all([
+    window.SupaEntries.teamSummary(dates[0], dates[4]),
+    window.SupaProfiles.getAll(),
+  ]);
+  const weekRows = results[0], profiles = results[1];
+  const employees = profiles.filter(function(p){ return p.user_type === 'employee'; });
+
+  const wb = XLSX.utils.book_new();
+  const summaryData = [];
+
+  if (opts.includeSummary) {
+    summaryData.push(['Nature Landscape Architects   Team Timesheet Summary']);
+    summaryData.push(['Week: ' + weekLabel + '  |  Generated: ' + fmtDate(today)]);
+    summaryData.push(['']);
+  }
+
+  const headers = ['Employee', 'Role'].concat(dayLabels).concat(['Total', 'Target']);
+  if (opts.includeUtil) headers.push('Utilization');
+  if (opts.includeStatus) headers.push('Status');
+  summaryData.push(headers);
+
+  employees.forEach(function(emp) {
+    const empEntries = weekRows.filter(function(e){ return e.user_id === emp.id; });
+    const byDay = [0,0,0,0,0];
+    empEntries.forEach(function(e) {
+      const di = dates.indexOf(e.date);
+      if (di >= 0) byDay[di] += parseFloat(e.hours);
+    });
+    const total = byDay.reduce(function(a,b){return a+b;},0);
+    const row = [emp.name, emp.role].concat(byDay.map(function(h){return h>0?h:'';})).concat([total>0?total:'', 45]);
+    if (opts.includeUtil) row.push(total>0?(((total/45)*100).toFixed(1)+'%'):'0%');
+    if (opts.includeStatus) {
+      const hasSubmit = empEntries.some(function(e){return e.status==='submitted';});
+      const hasApprove = empEntries.some(function(e){return e.status==='approved';});
+      row.push(hasApprove ? 'Approved' : hasSubmit ? 'Submitted' : total>0 ? 'Draft' : 'No entries');
+    }
+    summaryData.push(row);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(summaryData);
+  ws['!cols'] = [{wch:28},{wch:22},{wch:13},{wch:13},{wch:13},{wch:13},{wch:13},{wch:10},{wch:10},{wch:12},{wch:14}];
+  if (opts.includeSummary) {
+    ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:9}},{s:{r:1,c:0},e:{r:1,c:9}}];
+  }
+  XLSX.utils.book_append_sheet(wb, ws, 'Team Summary');
+  XLSX.writeFile(wb, 'NLA_Team_Timesheet_' + dates[0] + '.xlsx');
+}
+
+// -- TEAM PDF EXPORT ------------------------------------------------------------
+async function exportTeamPDF(opts) {
+  opts = opts || window._exportOptions;
+  const jsPDF = window.jspdf.jsPDF;
+  const today = new Date().toISOString().split('T')[0];
+  const dates = getWeekDates(0);
+  const weekLabel = fmtWeekLabel(dates);
+  const dayLabels = dates.map(function(d) {
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+  });
+
+  const results = await Promise.all([
+    window.SupaEntries.teamSummary(dates[0], dates[4]),
+    window.SupaProfiles.getAll(),
+  ]);
+  const weekRows = results[0], profiles = results[1];
+  const employees = profiles.filter(function(p){ return p.user_type === 'employee'; });
+  const totalHrs = weekRows.reduce(function(s,e){return s+parseFloat(e.hours);},0);
+  const target = employees.length * 45;
+
+  const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
+  const PW = doc.internal.pageSize.getWidth();
+  const PH = doc.internal.pageSize.getHeight();
+
+  pdfHeader(doc, PW, 'Team Timesheet Report', weekLabel);
+
+  if (opts.includeSummary) {
+    const util = target > 0 ? ((totalHrs/target)*100).toFixed(1) : '0';
+    const statsItems = [
+      ['Team Size', employees.length + ' employees'],
+      ['Total Hours', totalHrs.toFixed(1) + 'h'],
+      ['Weekly Target', target + 'h'],
+      ['Generated', fmtDate(today)],
+    ];
+    if (opts.includeUtil) statsItems.splice(3, 0, ['Utilization', util + '%']);
+    pdfInfoBar(doc, PW, statsItems, 30);
+  }
+
+  const tableHeaders = [['Employee', 'Role'].concat(dayLabels).concat(['Total'])];
+  if (opts.includeUtil) tableHeaders[0].push('Util %');
+  if (opts.includeStatus) tableHeaders[0].push('Status');
+
+  const tableBody = employees.map(function(emp) {
+    const empEntries = weekRows.filter(function(e){ return e.user_id === emp.id; });
+    const byDay = [0,0,0,0,0];
+    empEntries.forEach(function(e) {
+      const di = dates.indexOf(e.date);
+      if (di >= 0) byDay[di] += parseFloat(e.hours);
+    });
+    const total = byDay.reduce(function(a,b){return a+b;},0);
+    const row = [emp.name, emp.role].concat(byDay.map(function(h){return h>0?h.toFixed(1):' ';})).concat([total>0?total.toFixed(1):' ']);
+    if (opts.includeUtil) row.push(total>0?(((total/45)*100).toFixed(0)+'%'):'0%');
+    if (opts.includeStatus) {
+      const hasSubmit = empEntries.some(function(e){return e.status==='submitted';});
+      const hasApprove = empEntries.some(function(e){return e.status==='approved';});
+      row.push(hasApprove ? 'Approved' : hasSubmit ? 'Submitted' : total>0 ? 'Draft' : 'No entries');
+    }
+    return row;
+  });
+
+  const colStyles = {
+    0: { halign:'left', fontStyle:'bold', cellWidth: 42 },
+    1: { halign:'left', cellWidth: 36, textColor:[100,120,150] },
+  };
+
+  doc.autoTable({
+    head: tableHeaders, body: tableBody.length > 0 ? tableBody : [['No data']],
+    startY: opts.includeSummary ? 48 : 34, margin:{left:8,right:8},
+    styles:{font:'helvetica',fontSize:8,cellPadding:3.5,textColor:[30,40,60]},
+    headStyles:{fillColor:NLA_NAVY,textColor:NLA_WHITE,fontStyle:'bold',fontSize:7.5,halign:'center'},
+    columnStyles: colStyles,
+    alternateRowStyles:{fillColor:[245,248,252]},
+    didParseCell: function(data) {
+      if (opts.includeUtil) {
+        const utilIdx = tableHeaders[0].indexOf('Util %');
+        if (data.column.index === utilIdx && data.section === 'body') {
+          const val = parseInt(data.cell.raw);
+          if (val >= 100) data.cell.styles.textColor=[29,142,74];
+          else if (val >= 75) data.cell.styles.textColor=[180,140,30];
+          else data.cell.styles.textColor=[180,50,50];
+        }
+      }
+      if (opts.includeStatus) {
+        const statusIdx = tableHeaders[0].indexOf('Status');
+        if (data.column.index === statusIdx && data.section === 'body') {
+          if (data.cell.raw === 'Approved') { data.cell.styles.textColor=[29,142,74]; data.cell.styles.fontStyle='bold'; }
+          if (data.cell.raw === 'Submitted') { data.cell.styles.textColor=[180,140,30]; data.cell.styles.fontStyle='bold'; }
+        }
+      }
+    },
+  });
+
+  pdfFooter(doc, PW, PH, 1, 1);
+  doc.save('NLA_Team_Timesheet_' + dates[0] + '.pdf');
+}
+
+// -- TEAM EXPORT DIALOG ---------------------------------------------------------
+function TeamExportButtons() {
+  const [exporting, setExporting] = React.useState(null);
+  const [dialog, setDialog] = React.useState(null);
+
+  const doExport = async (type, opts) => {
+    setExporting(type);
+    try {
+      if (type === 'excel') await exportTeamExcel(opts);
+      if (type === 'pdf')   await exportTeamPDF(opts);
+    } catch(e) { console.error('Export error:', e); alert('Export failed: ' + e.message); }
+    setExporting(null);
+  };
+
+  return (
+    <>
+      <button className="btn btn-sm" onClick={() => setDialog('excel')} disabled={!!exporting}
+        style={{display:'flex',alignItems:'center',gap:4}}>
+        <Icon name="download" size={12}/> {exporting === 'excel' ? 'Exporting ' : 'Excel'}
+      </button>
+      <button className="btn btn-sm" onClick={() => setDialog('pdf')} disabled={!!exporting}
+        style={{display:'flex',alignItems:'center',gap:4,color:'#102347',borderColor:'#102347'}}>
+        <Icon name="download" size={12}/> {exporting === 'pdf' ? 'Exporting ' : 'PDF'}
+      </button>
+      <ExportOptionsDialog open={dialog==='excel'} type="excel" onClose={() => setDialog(null)} onExport={(opts) => doExport('excel', opts)}/>
+      <ExportOptionsDialog open={dialog==='pdf'} type="pdf" onClose={() => setDialog(null)} onExport={(opts) => doExport('pdf', opts)}/>
+    </>
+  );
+}
+
+window.ExportButtons     = ExportButtons;
+window.TeamExportButtons = TeamExportButtons;
+window.exportToExcel     = exportToExcel;
+window.exportToPDF       = exportToPDF;
+window.exportTeamExcel   = exportTeamExcel;
+window.exportTeamPDF     = exportTeamPDF;
+
+
+
+
+// ======== app.jsx ========
+
+function ManagerUnlockModal({ open, onClose, onSuccess, user }) {
+  const [password, setPassword] = React.useState('');
+  const [error, setError] = React.useState('');
+  React.useEffect(() => { if (open) { setPassword(''); setError(''); } }, [open]);
+  if (!open) return null;
+
+  const submit = (e) => {
+    e?.preventDefault?.();
+    const res = Auth.login(user.username, password);
+    if (res.ok) {
+      sessionStorage.setItem('nla_mgr_unlocked', '1');
+      onSuccess();
+    } else {
+      setError('Incorrect password. Admin access denied.');
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth: 400}}>
+        <div style={{padding: '24px 28px 8px', borderBottom: '1px solid var(--border)'}}>
+          <div style={{display: 'flex', gap: 12, alignItems: 'center'}}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 10,
+              background: 'rgba(16,35,71,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--brand-navy)'
+            }}>
+              <Icon name="eye" size={20} />
+            </div>
+            <div>
+              <h3 style={{margin: 0, fontSize: 16}}>Admin access required</h3>
+              <p style={{margin: '2px 0 0', fontSize: 12.5, color: 'var(--text-muted)'}}>
+                Manager view shows other employees' activity
+              </p>
+            </div>
+          </div>
+        </div>
+        <form onSubmit={submit} style={{padding: '20px 28px 24px'}}>
+          <div className="field" style={{marginBottom: 12}}>
+            <label>Confirm your password</label>
+            <input
+              type="password"
+              className="input"
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+            />
+          </div>
+          {error && <div className="auth-error" style={{marginBottom: 12}}>{error}</div>}
+          <div style={{display: 'flex', gap: 8, justifyContent: 'flex-end'}}>
+            <button type="button" className="btn" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary">Unlock Manager view</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+window.ManagerUnlockModal = ManagerUnlockModal;
+
+function TweaksPanel({ open, brandColor, setBrandColor, features, setFeatures, view, setView, canSwitchView }) {
+  if (!open) return null;
+  const swatches = [
+    { name: 'Navy (brand)', val: '#102347' },
+    { name: 'Forest', val: '#1f5130' },
+    { name: 'Charcoal', val: '#1f2937' },
+    { name: 'Slate blue', val: '#2f4a7a' },
+    { name: 'Terracotta', val: '#8f3a1a' },
+  ];
+  return (
+    <div className="tweaks-panel">
+      <div className="tweaks-header">
+        <span>Tweaks</span>
+        <Icon name="settings" size={14}/>
+      </div>
+      <div className="tweaks-body">
+        {canSwitchView && (
+          <div className="tweak-row">
+            <label>View</label>
+            <div className="view-switch" style={{width: '100%'}}>
+              <button className={view === 'employee' ? 'on' : ''} style={{flex: 1}} onClick={() => setView('employee')}>Employee</button>
+              <button className={view === 'manager' ? 'on' : ''} style={{flex: 1}} onClick={() => setView('manager')}>Manager</button>
+            </div>
+          </div>
+        )}
+        <div className="tweak-row">
+          <label>Brand color</label>
+          <div className="tweak-swatches">
+            {swatches.map(s => (
+              <div key={s.val} className={`tweak-swatch ${brandColor === s.val ? 'on' : ''}`}
+                   style={{background: s.val}} title={s.name} onClick={() => setBrandColor(s.val)} />
+            ))}
+          </div>
+        </div>
+        <div className="tweak-row">
+          <label>Optional features</label>
+          {[
+            { id: 'gps', label: 'GPS / site check-in' },
+            { id: 'photos', label: 'Jobsite photo uploads' },
+            { id: 'overtime', label: 'Highlight overtime' },
+          ].map(f => (
+            <div key={f.id} className="tweak-toggle">
+              <span>{f.label}</span>
+              <div className={`switch ${features[f.id] ? 'on' : ''}`}
+                   onClick={() => setFeatures({...features, [f.id]: !features[f.id]})} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function greetingPrefix() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function App() {
+  // Resolve components from window (defined in other script files)
+  const Icon          = window.Icon;
+  const LoginScreen   = window.LoginScreen;
+  const Sidebar       = window.Sidebar;
+  const Topbar        = window.Topbar;
+  const UserMenu      = window.UserMenu;
+  const EmployeeView  = window.EmployeeView;
+  const ManagerView   = window.ManagerView;
+
+  const [user, setUser] = React.useState(() => Auth.getSession());
+  const [view, setView] = React.useState(() => localStorage.getItem('nla_view') || 'employee');
+  const [activeNav, setActiveNav] = React.useState('dashboard');
+  const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  const [brandColor, setBrandColor] = React.useState('#102347');
+  const [features, setFeatures] = React.useState({ gps: false, photos: false, overtime: true });
+  const [mgrUnlockOpen, setMgrUnlockOpen] = React.useState(false);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [notifOpen, setNotifOpen] = React.useState(false);
+  const [mgrUnlocked, setMgrUnlocked] = React.useState(() => !!sessionStorage.getItem('nla_mgr_unlocked'));
+
+  React.useEffect(() => { localStorage.setItem('nla_view', view); }, [view]);
+
+  // When user logs in   managers go straight to manager view, employees stay on employee view
+  React.useEffect(() => {
+    if (user) {
+      if (user.type === 'manager') {
+        setMgrUnlocked(true);
+        sessionStorage.setItem('nla_mgr_unlocked', '1');
+        setView('manager');
+      } else {
+        setView('employee');
+        setMgrUnlocked(false);
+        sessionStorage.removeItem('nla_mgr_unlocked');
+      }
+    }
+  }, [user?.id]);
+
+  React.useEffect(() => {
+    setActiveNav(view === 'employee' ? 'dashboard' : 'overview');
+  }, [view]);
+
+  React.useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--brand-navy', brandColor);
+    root.style.setProperty('--accent', brandColor);
+  }, [brandColor]);
+
+  React.useEffect(() => {
+    const handler = (ev) => {
+      if (ev.data?.type === '__activate_edit_mode') setTweaksOpen(true);
+      if (ev.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({type: '__edit_mode_available'}, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const persistEdit = (edits) => window.parent.postMessage({type: '__edit_mode_set_keys', edits}, '*');
+
+  if (!user) {
+    return <LoginScreen onLogin={(u) => setUser(u)} />;
+  }
+
+  const canSwitchView = user.type === 'manager';
+  // non-manager users can only see employee view
+  const effectiveView = canSwitchView && (view === 'manager' ? mgrUnlocked : true) ? view : 'employee';
+
+  // Managers can switch views freely   no password re-entry needed
+  const requestSetView = (v) => {
+    setView(v);
+    persistEdit({ view: v });
+  };
+
+  const title = `${greetingPrefix()}, ${user.name.split(' ')[0]}`;
+  const todayStr = new Date().toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+  const subtitle = effectiveView === 'employee'
+    ? `${todayStr}   Here's your day at a glance.`
+    : `${todayStr}   Here's where the studio stands today.`;
+
+  const logout = () => { Auth.clearSession(); setUser(null); };
+
+  return (
+    <div className="app" data-screen-label={`NLA Timesheet   ${effectiveView}`}>
+      <Sidebar view={effectiveView} activeNav={activeNav} setActiveNav={setActiveNav} user={user} onSettings={() => setSettingsOpen(true)} onNotifications={() => setNotifOpen(true)} />
+      <div className="main">
+        <Topbar
+          view={effectiveView}
+          setView={canSwitchView ? requestSetView : null}
+          title={title}
+          subtitle={subtitle}
+          canSwitchView={canSwitchView}
+          user={user}
+          actions={
+            <>
+              <button className="btn"><Icon name="search" size={14}/> Search</button>
+              <button className="btn"><Icon name="download" size={14}/> Export</button>
+              <UserMenu user={user} onLogout={logout} />
+            </>
+          }
+        />
+        {effectiveView === 'employee'
+          ? <EmployeeView featuresEnabled={features} user={user} activeNav={activeNav}/>
+    : <ManagerView activeNav={activeNav} />}
+      </div>
+
+      <TweaksPanel
+        open={tweaksOpen}
+        brandColor={brandColor}
+        setBrandColor={(c) => { setBrandColor(c); persistEdit({ brandColor: c }); }}
+        features={features}
+        setFeatures={(f) => { setFeatures(f); persistEdit({ features: f }); }}
+        view={effectiveView}
+        setView={requestSetView}
+        canSwitchView={canSwitchView}
+      />
+
+      <ManagerUnlockModal
+        open={mgrUnlockOpen}
+        user={user}
+        onClose={() => setMgrUnlockOpen(false)}
+        onSuccess={() => {
+          setMgrUnlocked(true);
+          setMgrUnlockOpen(false);
+          setView('manager');
+          persistEdit({ view: 'manager' });
+        }}
+      />
+
+      {/* Settings Modal + Notifications Panel */}
+      {settingsOpen && window.SettingsModal && React.createElement(window.SettingsModal, {
+        user, open: settingsOpen, onClose: () => setSettingsOpen(false)
+      })}
+      {notifOpen && window.NotificationsPanel && React.createElement(window.NotificationsPanel, {
+        user, open: notifOpen, onClose: () => setNotifOpen(false)
+      })}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+
+
