@@ -1,3 +1,4 @@
+const Icon = window.Icon;
 // -- NLA Export Module ---------------------------------------------------------
 // Professional Excel + PDF exports with NLA branding
 // Logo: 817x178px (4.59:1 ratio). At 10mm tall = 45.9mm wide
