@@ -5,10 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>NLA Timesheet</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%23102347%22/><text y=%2224%22 x=%224%22 font-size=%2222%22 fill=%22white%22>N</text></svg>"/>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f5f7;color:#1a1d21}
-#root{min-height:100vh}
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f5f7;color:#1a1d21}#root{min-height:100vh}
 /* Nature Landscape Architects   Timesheet Dashboard */
 
 :root {
@@ -1697,13 +1694,8 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-<script>
-window.NLA_EMAILJS_SERVICE='service_lmsi4cv';
-window.NLA_EMAILJS_TEMPLATE='template_zvt8kg8';
-window.NLA_EMAILJS_KEY='dpHnQcP8RIPcY47Qj';
-</script>
-<script>
-// ==== supabase-client.jsx ====
+<script>window.NLA_EMAILJS_SERVICE='service_lmsi4cv';window.NLA_EMAILJS_TEMPLATE='template_zvt8kg8';window.NLA_EMAILJS_KEY='dpHnQcP8RIPcY47Qj';</script>
+<script>// ==== supabase-client.jsx ====
 // -- Supabase client ------------------------------------------
 // Loaded before all other JSX files in index.html
 
@@ -9485,6 +9477,22 @@ function App() {
     type: '__edit_mode_set_keys',
     edits
   }, '*');
+
+  // Approval badge count - must be BEFORE any early return (Rules of Hooks)
+  React.useEffect(() => {
+    if (!user) return;
+    if (view !== 'manager' && !mgrUnlocked) return;
+    if (window.SupaEntries && window.SupaEntries.getPendingSubmissions) {
+      window.SupaEntries.getPendingSubmissions().then(function (pending) {
+        var groups = new Set(pending.map(function (e) {
+          return e.user_id + '_' + (e.date || '').slice(0, 7);
+        }));
+        setNavCounts({
+          approvals: groups.size
+        });
+      }).catch(function () {});
+    }
+  }, [user, view, mgrUnlocked, activeNav]);
   if (!user) {
     return /*#__PURE__*/React.createElement(LoginScreen, {
       onLogin: u => setUser(u)
@@ -9493,17 +9501,6 @@ function App() {
   const canSwitchView = user.type === 'manager';
   // non-manager users can only see employee view
   const effectiveView = canSwitchView && (view === 'manager' ? mgrUnlocked : true) ? view : 'employee';
-
-  // Load pending approvals count for manager nav badge (after effectiveView is defined)
-  React.useEffect(() => {
-    if (!user || effectiveView !== 'manager') return;
-    window.SupaEntries.getPendingSubmissions().then(pending => {
-      const groups = new Set(pending.map(e => e.user_id + '_' + (e.date || '').slice(0, 7)));
-      setNavCounts({
-        approvals: groups.size
-      });
-    }).catch(() => {});
-  }, [user, effectiveView, activeNav]);
 
   // Managers can switch views freely   no password re-entry needed
   const requestSetView = v => {
@@ -9605,7 +9602,6 @@ function App() {
     onClose: () => setNotifOpen(false)
   }));
 }
-ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App, null));
-</script>
+ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App, null));</script>
 </body>
 </html>
