@@ -9,7 +9,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f5f7;color:#1a1d21}
 #root{min-height:100vh}
-/* Nature Landscape Architects — Timesheet Dashboard */
+/* Nature Landscape Architects   Timesheet Dashboard */
 
 :root {
   --brand-navy: #102347;
@@ -71,7 +71,7 @@ button { font-family: inherit; }
   min-height: 100vh;
 }
 
-/* ─── Sidebar ─── */
+/*     Sidebar     */
 .sidebar {
   background: var(--brand-navy);
   color: #c9d3e6;
@@ -157,7 +157,7 @@ button { font-family: inherit; }
 .sidebar-user .who { font-size: 13px; color: #fff; font-weight: 500; }
 .sidebar-user .role { font-size: 11.5px; color: #8a9bbd; }
 
-/* ─── Main ─── */
+/*     Main     */
 .main {
   display: flex;
   flex-direction: column;
@@ -248,7 +248,7 @@ button { font-family: inherit; }
   width: 100%;
 }
 
-/* ─── Cards ─── */
+/*     Cards     */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -271,7 +271,7 @@ button { font-family: inherit; }
 }
 .card-sub { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
 
-/* ─── Clock Card ─── */
+/*     Clock Card     */
 .clock-card {
   background: linear-gradient(135deg, var(--brand-navy) 0%, var(--brand-navy-700) 100%);
   color: #fff;
@@ -364,7 +364,7 @@ button { font-family: inherit; }
 }
 .clock-btn:hover { filter: brightness(0.96); }
 
-/* ─── Stat cards ─── */
+/*     Stat cards     */
 .stats-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -405,7 +405,7 @@ button { font-family: inherit; }
 .stat-delta.up { color: var(--success); }
 .stat-delta.down { color: var(--danger); }
 
-/* ─── Today entries table ─── */
+/*     Today entries table     */
 .entries {
   display: flex;
   flex-direction: column;
@@ -491,7 +491,7 @@ button { font-family: inherit; }
   font-variant-numeric: tabular-nums;
 }
 
-/* ─── Add entry form ─── */
+/*     Add entry form     */
 .add-entry {
   padding: 16px 22px;
   border-top: 1px dashed var(--border);
@@ -517,7 +517,7 @@ button { font-family: inherit; }
 }
 .input::placeholder { color: var(--text-faint); }
 
-/* ─── Weekly grid ─── */
+/*     Weekly grid     */
 .week-grid {
   width: 100%;
   border-collapse: collapse;
@@ -602,7 +602,7 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
 }
 .week-total-row .week-project { color: var(--text); }
 
-/* ─── Manager table ─── */
+/*     Manager table     */
 .team-table {
   width: 100%;
   border-collapse: collapse;
@@ -642,7 +642,7 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
 .team-cell-emp .name { font-weight: 500; }
 .team-cell-emp .role { font-size: 11.5px; color: var(--text-muted); }
 
-/* ─── Utilization bar ─── */
+/*     Utilization bar     */
 .util-bar {
   height: 6px;
   background: var(--border);
@@ -662,7 +662,7 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
 }
 .util-bar.over > span { background: var(--warning); }
 
-/* ─── Badges ─── */
+/*     Badges     */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -681,7 +681,7 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
 .badge.info { background: var(--brand-navy-50); color: var(--brand-navy-600); border-color: transparent; }
 .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
-/* ─── Two-column grid ─── */
+/*     Two-column grid     */
 .two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -698,7 +698,7 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
   gap: 18px;
 }
 
-/* ─── Project progress ─── */
+/*     Project progress     */
 .project-item {
   padding: 14px 22px;
   border-top: 1px solid var(--border);
@@ -717,7 +717,7 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
   text-align: right;
 }
 
-/* ─── Approval requests ─── */
+/*     Approval requests     */
 .request {
   padding: 14px 22px;
   border-top: 1px solid var(--border);
@@ -731,7 +731,7 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
 .request .req-sub { font-size: 12px; color: var(--text-muted); margin: 0; }
 .request .req-actions { display: flex; gap: 6px; }
 
-/* ─── Section heading ─── */
+/*     Section heading     */
 .section-title {
   display: flex;
   align-items: baseline;
@@ -749,7 +749,7 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
   color: var(--text-muted);
 }
 
-/* ─── Tweaks panel ─── */
+/*     Tweaks panel     */
 .tweaks-panel {
   position: fixed;
   bottom: 20px;
@@ -813,7 +813,7 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
 }
 .switch.on::after { transform: translateX(14px); }
 
-/* ─── Leave requests ─── */
+/*     Leave requests     */
 .leave-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -834,7 +834,7 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
 }
 .leave-stat .l { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
 
-/* ─── Mini sparkline-ish bars ─── */
+/*     Mini sparkline-ish bars     */
 .day-bars {
   display: flex;
   align-items: stretch;
@@ -872,7 +872,7 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
   text-transform: uppercase;
 }
 
-/* ─── Icons (pure CSS/SVG inline via font weight) ─── */
+/*     Icons (pure CSS/SVG inline via font weight)     */
 .icon {
   width: 16px; height: 16px;
   display: inline-block;
@@ -884,7 +884,7 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
   flex-shrink: 0;
 }
 
-/* ─── Empty states ─── */
+/*     Empty states     */
 .empty {
   padding: 40px 22px;
   text-align: center;
@@ -896,6 +896,25 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
 @media print {
   .sidebar, .topbar, .tweaks-panel { display: none; }
   .content { padding: 0; }
+}
+
+/* Modal overrides */
+.modal-card {
+  background: var(--surface, #fff) !important;
+  border-radius: 14px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+  overflow: hidden;
+}
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(16,35,71,0.55);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 500;
+  padding: 20px;
 }
 
 /* Login screen + auth styles */
@@ -1680,9 +1699,9 @@ th.today-col { background: rgba(16,35,71,0.08) !important; font-weight: 700; col
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script>
-window.NLA_EMAILJS_SERVICE  = 'service_lmsi4cv';
-window.NLA_EMAILJS_TEMPLATE = 'template_zvt8kg8';
-window.NLA_EMAILJS_KEY      = 'dpHnQcP8RIPcY47Qj';
+window.NLA_EMAILJS_SERVICE='service_lmsi4cv';
+window.NLA_EMAILJS_TEMPLATE='template_zvt8kg8';
+window.NLA_EMAILJS_KEY='dpHnQcP8RIPcY47Qj';
 </script>
 <script type="text/babel" data-presets="react">
 // ==== supabase-client.jsx ====
@@ -3096,7 +3115,7 @@ function NotificationsPanel({ user, open, onClose }) {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth: 400, marginTop: 60, marginRight: 20, marginLeft: 'auto'}}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth: 400, marginTop: 60, marginRight: 20, marginLeft: 'auto', background: 'var(--surface)', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.18)'}}>
         <div style={{padding: '18px 24px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
           <h3 style={{margin: 0, fontSize: 15}}>Notifications</h3>
           <button onClick={onClose} style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text-muted)', lineHeight: 1}}>&times;</button>
@@ -3173,7 +3192,7 @@ function SettingsModal({ user, open, onClose }) {
   return (
     <>
       <div className="modal-backdrop" onClick={onClose}>
-        <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth: 460}}>
+        <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{maxWidth: 460, background: 'var(--surface)', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.18)'}}>
           <div style={{padding: '20px 28px 0', borderBottom: '1px solid var(--border)'}}>
             <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16}}>
               <h3 style={{margin: 0, fontSize: 15}}>Settings</h3>
@@ -3261,7 +3280,8 @@ window.SettingsModal = SettingsModal;
 // ==== chrome.jsx ====
 const { useState, useEffect, useMemo } = React;
 
-function Sidebar({ view, activeNav, setActiveNav, user, onSettings, onNotifications }) {
+function Sidebar({ view, activeNav, setActiveNav, user, onSettings, onNotifications, navCounts }) {
+  navCounts = navCounts || {};
   const employeeNav = [
     { id: 'dashboard',  label: 'Dashboard',    icon: 'home' },
     { id: 'timesheet',  label: 'My Timesheet', icon: 'clock' },
@@ -3271,7 +3291,7 @@ function Sidebar({ view, activeNav, setActiveNav, user, onSettings, onNotificati
   const managerNav = [
     { id: 'overview', label: 'Team Overview', icon: 'home' },
     { id: 'activity', label: 'Activity Monitor', icon: 'pulse' },
-    { id: 'approvals', label: 'Approvals', icon: 'check', count: 3 },
+    { id: 'approvals', label: 'Approvals', icon: 'check', count: 0 },
     { id: 'projects', label: 'Projects', icon: 'briefcase' },
     { id: 'reports', label: 'Reports', icon: 'chart' },
     { id: 'users', label: 'Users & Access', icon: 'users' },
@@ -3505,7 +3525,7 @@ function TodayEntries({ entries, setEntries, userId }) {
     <div className="card">
       <div className="card-header">
         <div>
-          <h3 className="card-title">Today   Monday, April 20</h3>
+          <h3 className="card-title">Today   {new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</h3>
           <div className="card-sub">Working hours 8:30 AM 6:30 PM   Lunch 1:00 PM 2:00 PM   OT after 6:30 PM</div>
         </div>
         <div style={{display: 'flex', gap: 6}}>
@@ -3783,52 +3803,146 @@ function WeeklyGrid({ user }) {
   );
 }
 
-function LeaveCard() {
+function LeaveCard({ user }) {
+  const [showForm, setShowForm] = useStateEmp(false);
+  const [requests, setRequests] = useStateEmp([]);
+  const [form, setForm] = useStateEmp({ type: 'annual', from: '', to: '', reason: '' });
+  const [submitting, setSubmitting] = useStateEmp(false);
+  const [msg, setMsg] = useStateEmp('');
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.from || !form.to) return;
+    setSubmitting(true);
+    const newReq = { id: Date.now(), ...form, status: 'pending', submittedAt: new Date().toISOString() };
+    const all = [...requests, newReq];
+    setRequests(all);
+    // Save to Supabase notifications for manager
+    if (window.SupaNotifications && user) {
+      await window.SupaNotifications.create(
+        'admin', 'info',
+        'Leave request from ' + user.name,
+        user.name + ' requested ' + form.type + ' leave from ' + form.from + ' to ' + form.to + (form.reason ? ' - ' + form.reason : '')
+      );
+    }
+    setMsg('Leave request submitted! Sanil will be notified.');
+    setForm({ type: 'annual', from: '', to: '', reason: '' });
+    setShowForm(false);
+    setSubmitting(false);
+    setTimeout(() => setMsg(''), 4000);
+  };
+
+  const today = new Date().toISOString().split('T')[0];
+
   return (
     <div className="card">
       <div className="card-header">
         <div>
-          <h3 className="card-title">Leave balance</h3>
+          <h3 className="card-title">Leave & Time off</h3>
           <div className="card-sub">2026 allowance</div>
         </div>
-        <button className="btn btn-sm btn-primary"><Icon name="plus" size={14}/> Request leave</button>
+        <button className="btn btn-sm btn-primary" onClick={() => setShowForm(!showForm)}>
+          <Icon name="plus" size={14}/> {showForm ? 'Cancel' : 'Request leave'}
+        </button>
       </div>
+
+      {msg && <div style={{margin:'0 20px 12px',padding:'10px 14px',background:'rgba(29,142,74,0.08)',color:'#16794c',borderRadius:8,fontSize:13}}>{msg}</div>}
+
+      {showForm && (
+        <form onSubmit={submit} style={{padding:'16px 20px',borderBottom:'1px solid var(--border)',background:'var(--surface-muted)'}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:12}}>
+            <div className="field">
+              <label>Leave type</label>
+              <select className="input select" value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
+                <option value="annual">Annual leave</option>
+                <option value="sick">Sick leave</option>
+                <option value="emergency">Emergency leave</option>
+                <option value="unpaid">Unpaid leave</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>From date</label>
+              <input type="date" className="input" min={today} value={form.from} onChange={e=>setForm({...form,from:e.target.value})} required/>
+            </div>
+            <div className="field">
+              <label>To date</label>
+              <input type="date" className="input" min={form.from||today} value={form.to} onChange={e=>setForm({...form,to:e.target.value})} required/>
+            </div>
+          </div>
+          <div className="field" style={{marginBottom:12}}>
+            <label>Reason (optional)</label>
+            <input type="text" className="input" placeholder="Brief reason for leave..." value={form.reason} onChange={e=>setForm({...form,reason:e.target.value})}/>
+          </div>
+          <button type="submit" className="btn btn-primary" disabled={submitting||!form.from||!form.to}>
+            {submitting ? 'Submitting...' : 'Submit request'}
+          </button>
+        </form>
+      )}
+
       <div className="leave-grid">
-        <div className="leave-stat">
-          <div className="n">18</div>
-          <div className="l">Annual leave remaining</div>
-        </div>
-        <div className="leave-stat">
-          <div className="n">6</div>
-          <div className="l">Sick leave remaining</div>
-        </div>
-        <div className="leave-stat">
-          <div className="n">2</div>
-          <div className="l">Pending requests</div>
-        </div>
+        <div className="leave-stat"><div className="n">18</div><div className="l">Annual leave remaining</div></div>
+        <div className="leave-stat"><div className="n">6</div><div className="l">Sick leave remaining</div></div>
+        <div className="leave-stat"><div className="n">{requests.filter(r=>r.status==='pending').length}</div><div className="l">Pending requests</div></div>
       </div>
+
+      {requests.length > 0 && (
+        <div style={{padding:'0 20px 16px'}}>
+          <div style={{fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--text-muted)',margin:'12px 0 8px'}}>Your requests</div>
+          {requests.map(r => (
+            <div key={r.id} style={{display:'flex',justifyContent:'space-between',padding:'8px 12px',background:'var(--surface-muted)',borderRadius:7,marginBottom:6,fontSize:13}}>
+              <div>
+                <span style={{fontWeight:500,textTransform:'capitalize'}}>{r.type} leave</span>
+                <span style={{color:'var(--text-muted)',marginLeft:8}}>{r.from} to {r.to}</span>
+              </div>
+              <span style={{
+                padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600,
+                background: r.status==='approved'?'rgba(29,142,74,0.1)':r.status==='rejected'?'rgba(165,40,34,0.1)':'rgba(180,140,30,0.1)',
+                color: r.status==='approved'?'#16794c':r.status==='rejected'?'#a52822':'#a87220',
+              }}>{r.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function WeekBars() {
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  const values = [8.0, 8.25, 7.5, 8.0, 6.75];
-  const max = 10;
+function WeekBars({ user }) {
+  const days = ['Mon','Tue','Wed','Thu','Fri'];
+  const [values, setValues] = React.useState([0,0,0,0,0]);
+  React.useEffect(() => {
+    if (!user) return;
+    const d = new Date(); const day = d.getDay();
+    const mon = new Date(d); mon.setDate(d.getDate()-day+(day===0?-6:1));
+    const monday = mon.toISOString().split('T')[0];
+    const weekDates = Array.from({length:5},(_,i)=>{
+      const x=new Date(mon); x.setDate(mon.getDate()+i); return x.toISOString().split('T')[0];
+    });
+    window.SupaEntries.teamSummary(monday, weekDates[4]).then(rows => {
+      const mine = rows.filter(e => e.user_id === user.id);
+      const byDay = [0,0,0,0,0];
+      mine.forEach(e => { const i=weekDates.indexOf(e.date); if(i>=0) byDay[i]+=parseFloat(e.hours||0); });
+      setValues(byDay);
+    }).catch(()=>{});
+  }, [user]);
+  const max = Math.max(...values, 9);
+  const total = values.reduce((a,b)=>a+b,0);
+  const isOnTrack = total >= (new Date().getDay()-1) * 9;
   return (
     <div className="card">
       <div className="card-header">
         <div>
           <h3 className="card-title">Hours this week</h3>
-          <div className="card-sub">Daily totals   8h target</div>
+          <div className="card-sub">Daily totals   9h target</div>
         </div>
-        <span className="badge info"><span className="dot"/>On track</span>
+        <span className={`badge ${isOnTrack?'success':'info'}`}><span className="dot"/>{total.toFixed(1)}h logged</span>
       </div>
       <div className="day-bars">
         {days.map((d, i) => (
           <div key={d} className="day-bar">
-            <div className="bar" style={{height: '100%'}}>
-              <div className="fill" style={{height: `${(values[i]/max)*100}%`}}/>
+            <div className="bar" style={{height:'100%',position:'relative'}}>
+              <div className="fill" style={{height:`${(values[i]/max)*100}%`}}/>
+              {values[i]>0 && <div style={{position:'absolute',top:-16,left:0,right:0,textAlign:'center',fontSize:9,color:'var(--text-muted)'}}>{values[i].toFixed(1)}</div>}
             </div>
             <div className="label">{d}</div>
           </div>
@@ -3902,6 +4016,99 @@ function DesktopAgentBanner() {
   );
 }
 
+function ProjectsTab({ user }) {
+  const [selected, setSelected] = useStateEmp(null);
+  const [projHours, setProjHours] = useStateEmp({});
+  const [loading, setLoading] = useStateEmp(true);
+  const projects = window.DATA.PROJECTS || [];
+
+  useEffectEmp(() => {
+    if (!user) return;
+    const d = new Date(); const day = d.getDay();
+    const mon = new Date(d); mon.setDate(d.getDate()-day+(day===0?-6:1));
+    const monday = mon.toISOString().split('T')[0];
+    const lastMonth = new Date(); lastMonth.setMonth(lastMonth.getMonth()-1);
+    window.SupaEntries.forWeek(user.id, monday).then(rows => {
+      const byProj = {};
+      rows.forEach(e => {
+        byProj[e.project_id] = (byProj[e.project_id]||0) + parseFloat(e.hours||0);
+      });
+      setProjHours(byProj);
+      setLoading(false);
+    }).catch(()=>setLoading(false));
+  }, [user]);
+
+  const getWeekLabel = () => {
+    const d = new Date(); const day = d.getDay();
+    const mon = new Date(d); mon.setDate(d.getDate()-day+(day===0?-6:1));
+    const fri = new Date(mon); fri.setDate(mon.getDate()+4);
+    return mon.toLocaleDateString('en-GB',{day:'numeric',month:'short'}) + ' - ' +
+           fri.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+  };
+
+  return (
+    <>
+      <div className="section-title" style={{marginTop:0}}>
+        <h2>Projects</h2>
+        <span className="hint">{getWeekLabel()} - click a project to see your hours</span>
+      </div>
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">Active projects</h3>
+          <div className="card-sub">{projects.length} projects</div>
+        </div>
+        <table className="team-table">
+          <thead>
+            <tr><th>Project</th><th>Code</th><th>Client</th><th className="num">Your hours this week</th><th></th></tr>
+          </thead>
+          <tbody>
+            {projects.map(p => (
+              <React.Fragment key={p.id}>
+                <tr style={{cursor:'pointer'}} onClick={()=>setSelected(selected===p.id?null:p.id)}>
+                  <td>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <div style={{width:10,height:10,borderRadius:'50%',background:p.color||'#102347',flexShrink:0}}/>
+                      <span style={{fontWeight:500}}>{p.name}</span>
+                    </div>
+                  </td>
+                  <td style={{color:'var(--text-muted)',fontFamily:'var(--font-mono)',fontSize:12}}>{p.code}</td>
+                  <td style={{color:'var(--text-muted)'}}>{p.client||'  '}</td>
+                  <td className="num" style={{fontWeight:600,color:(projHours[p.id]||0)>0?'var(--accent)':'var(--text-muted)'}}>
+                    {loading ? '...' : (projHours[p.id]||0).toFixed(1)+'h'}
+                  </td>
+                  <td style={{textAlign:'center',color:'var(--text-muted)',fontSize:11}}>{selected===p.id?' ':' '}</td>
+                </tr>
+                {selected === p.id && (
+                  <tr>
+                    <td colSpan={5} style={{padding:0,background:'var(--surface-muted)'}}>
+                      <div style={{padding:'16px 20px',fontSize:13}}>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginBottom:8}}>
+                          <div style={{textAlign:'center'}}>
+                            <div style={{fontSize:22,fontWeight:700,color:'var(--accent)'}}>{(projHours[p.id]||0).toFixed(1)}h</div>
+                            <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>This week</div>
+                          </div>
+                          <div style={{textAlign:'center'}}>
+                            <div style={{fontSize:22,fontWeight:700,color:'var(--text)'}}>{p.code}</div>
+                            <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>Project code</div>
+                          </div>
+                          <div style={{textAlign:'center'}}>
+                            <div style={{fontSize:22,fontWeight:700,color:'var(--text)'}}>{p.client||'  '}</div>
+                            <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>Client</div>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 function EmployeeView({ featuresEnabled, user, activeNav }) {
   const [clockState, setClockState] = useStateEmp('working');
   const [entries, setEntries] = useStateEmp([]);
@@ -3948,7 +4155,7 @@ function EmployeeView({ featuresEnabled, user, activeNav }) {
           <StatCards featuresEnabled={featuresEnabled} />
           <div className="col-8-4">
             <TodayEntries entries={entries} setEntries={setEntries} userId={user?.id} />
-            <WeekBars />
+            <WeekBars user={user} />
           </div>
         </>
       )}
@@ -3966,7 +4173,7 @@ function EmployeeView({ featuresEnabled, user, activeNav }) {
           </div>
           <div className="col-8-4">
             <TodayEntries entries={entries} setEntries={setEntries} userId={user?.id} />
-            <WeekBars />
+            <WeekBars user={user} />
           </div>
         </>
       )}
@@ -4011,7 +4218,7 @@ function EmployeeView({ featuresEnabled, user, activeNav }) {
             <h2>Leave & Time off</h2>
             <span className="hint">Your leave balance and requests for 2026</span>
           </div>
-          <LeaveCard />
+          <LeaveCard user={user} />
         </>
       )}
 
@@ -5130,6 +5337,72 @@ function ReviewModal({ sub, onClose, onApprove, onReject }) {
   );
 }
 
+function AddProjectButton() {
+  const [open, setOpen] = React.useState(false);
+  const [form, setForm] = React.useState({ name: '', code: '', client: '', color: '#102347' });
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (!form.name || !form.code) return;
+    setSaving(true);
+    const newProj = { id: form.code.toLowerCase().replace(/\s+/g,'-'), ...form };
+    const existing = window.DATA.PROJECTS || [];
+    if (!existing.find(p => p.id === newProj.id)) {
+      window.DATA.PROJECTS = [...existing, newProj];
+    }
+    setMsg('Project added! Refresh to see it in dropdowns.');
+    setForm({ name: '', code: '', client: '', color: '#102347' });
+    setSaving(false);
+    setTimeout(() => { setMsg(''); setOpen(false); }, 2000);
+  };
+
+  return (
+    <>
+      <button className="btn btn-sm btn-primary" onClick={() => setOpen(true)}>
+        <Icon name="plus" size={14}/> Add project
+      </button>
+      {open && (
+        <div className="modal-backdrop" onClick={() => setOpen(false)}>
+          <div className="modal-card" onClick={e=>e.stopPropagation()} style={{maxWidth:440,marginTop:80,background:'var(--surface)',borderRadius:14}}>
+            <div style={{padding:'18px 24px 14px',borderBottom:'1px solid var(--border)'}}>
+              <h3 style={{margin:0,fontSize:15}}>Add new project</h3>
+            </div>
+            <form onSubmit={submit} style={{padding:'20px 24px'}}>
+              {msg && <div style={{marginBottom:12,padding:'10px 14px',background:'rgba(29,142,74,0.08)',color:'#16794c',borderRadius:8,fontSize:13}}>{msg}</div>}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+                <div className="field">
+                  <label>Project name *</label>
+                  <input type="text" className="input" placeholder="e.g. Dubai Creek Harbour" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} required/>
+                </div>
+                <div className="field">
+                  <label>Code *</label>
+                  <input type="text" className="input" placeholder="e.g. DCH-F09" value={form.code} onChange={e=>setForm({...form,code:e.target.value.toUpperCase()})} required/>
+                </div>
+                <div className="field">
+                  <label>Client</label>
+                  <input type="text" className="input" placeholder="Client name" value={form.client} onChange={e=>setForm({...form,client:e.target.value})}/>
+                </div>
+                <div className="field">
+                  <label>Color</label>
+                  <input type="color" className="input" value={form.color} onChange={e=>setForm({...form,color:e.target.value})} style={{height:38,padding:4}}/>
+                </div>
+              </div>
+              <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                <button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={saving||!form.name||!form.code}>
+                  {saving ? 'Adding...' : 'Add project'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function ProjectHours() {
   const [totals, setTotals] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -5376,238 +5649,99 @@ function AppUsageDonut({ slices, total, studioUtil }) {
 }
 
 function AppUsageBreakdown() {
-  const [range, setRange] = React.useState('today');
-  const [sortBy, setSortBy] = React.useState('billable'); // 'billable' | 'name' | 'util'
+  const [appData, setAppData] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [hasAgent, setHasAgent] = React.useState(false);
 
-  const multiplier = range === 'today' ? 1 : range === 'week' ? 5 : 22;
+  React.useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    window.SupaAppUsage.teamForDay(today).then(rows => {
+      if (rows.length === 0) { setLoading(false); setHasAgent(false); return; }
+      setHasAgent(true);
+      // Aggregate by app_key across all users
+      const byApp = {};
+      rows.forEach(r => {
+        byApp[r.app_key] = (byApp[r.app_key] || 0) + r.focus_seconds;
+      });
+      const sorted = Object.entries(byApp)
+        .map(([k,s]) => ({ k, hours: s/3600 }))
+        .sort((a,b) => b.hours - a.hours);
+      setAppData(sorted);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
 
-  const rowsBase = [
-    { emp: 'afsal',   apps: { revit: 4.21, acad: 1.20, sketch: 0.54, teams: 0.41, outlook: 0.27, pdf: 0.12 }, other: 0.70, target: 8 },
-    { emp: 'sandra',  apps: { revit: 5.05, acad: 0.55, sketch: 0.85, teams: 0.35, outlook: 0.20, pdf: 0.10 }, other: 0.45, target: 8 },
-    { emp: 'rivin',   apps: { revit: 2.10, acad: 3.10, sketch: 0.10, teams: 0.20, outlook: 0.35, pdf: 0.45 }, other: 0.55, target: 8 },
-    { emp: 'mehnas',  apps: { revit: 5.40, acad: 1.15, sketch: 0.10, teams: 0.30, outlook: 0.25, pdf: 0.20 }, other: 0.30, target: 8 },
-    { emp: 'elbin',   apps: { revit: 3.20, acad: 1.10, sketch: 0.55, teams: 0.35, outlook: 0.40, pdf: 0.20 }, other: 0.85, target: 8 },
-  ];
-
-  const rows = rowsBase.map(r => {
-    const apps = {};
-    Object.keys(r.apps).forEach(k => { apps[k] = +(r.apps[k] * multiplier).toFixed(2); });
-    const other = +(r.other * multiplier).toFixed(2);
-    const billable = Object.values(apps).reduce((s, x) => s + x, 0);
-    const total = billable + other;
-    const util = total > 0 ? Math.min(100, (billable / (r.target * multiplier)) * 100) : 0;
-    return { ...r, apps, other, billable, total, util };
-  });
-
-  const sortedRows = [...rows].sort((a, b) => {
-    if (sortBy === 'billable') return b.billable - a.billable;
-    if (sortBy === 'util') return b.util - a.util;
-    return 0;
-  });
-
-  // Studio totals by app
-  const appTotals = Object.keys(APP_META).map(k => ({
-    k,
-    hours: rows.reduce((s, r) => s + (r.apps[k] || 0), 0),
-  })).sort((a, b) => b.hours - a.hours);
-  const appTotalSum = appTotals.reduce((s, a) => s + a.hours, 0);
-  const studioOther = rows.reduce((s, r) => s + r.other, 0);
-  const studioTotal = appTotalSum + studioOther;
-
-  const empById = (id) => window.DATA.EMPLOYEES.find(e => e.id === id);
-  const fmt = (h) => {
-    if (h === 0) return ' ';
-    const hh = Math.floor(h);
-    const mm = Math.round((h - hh) * 60);
-    return `${hh}h ${String(mm).padStart(2, '0')}m`;
+  const getMeta = (k) => {
+    const map = {
+      revit:      { name: 'Autodesk Revit',  color: '#3fb6e6' },
+      acad:       { name: 'AutoCAD',          color: '#e8554e' },
+      navisworks: { name: 'Navisworks',       color: '#f59e0b' },
+      civil3d:    { name: 'Civil 3D',         color: '#10b981' },
+      sketchup:   { name: 'SketchUp',         color: '#f9a03f' },
+      teams:      { name: 'Teams',            color: '#6c7dd5' },
+      outlook:    { name: 'Outlook',          color: '#4a90d9' },
+      pdf:        { name: 'PDF / Bluebeam',   color: '#9a6fe0' },
+      excel:      { name: 'Excel',            color: '#1d7a44' },
+      word:       { name: 'Word',             color: '#1e56a0' },
+      other:      { name: 'Other',            color: '#9ca3af' },
+    };
+    return map[k] || { name: k, color: '#9ca3af' };
   };
-  const fmtDec = (h) => h.toFixed(1);
 
-  const rangeLabel = range === 'today' ? 'today' : range === 'week' ? 'this week' : 'this month';
-  const studioTarget = rows.length * 8 * multiplier;
-  const studioUtil = Math.min(100, (appTotalSum / studioTarget) * 100);
-  const topApp = appTotals[0] || { k: 'other', hours: 0 };
-  const topEmp = rows.length > 0 ? [...rows].sort((a, b) => b.util - a.util)[0] : null;
-  const topEmpObj = topEmp ? empById(topEmp.emp) : null;
+  const total = appData.reduce((s,a) => s + a.hours, 0);
+  const fmt = (h) => h >= 1 ? h.toFixed(1)+'h' : Math.round(h*60)+'m';
 
-  const getMeta = (k) => APP_META[k] || { name: k || 'Other', color: '#c4cbd6', cls: 'other' };
-
-  const donutSlices = [
-    ...appTotals.filter(a => a.hours > 0).map(a => ({
-      k: a.k, label: getMeta(a.k).name, value: a.hours, color: getMeta(a.k).color,
-    })),
-    { k: 'other', label: 'Other (not billed)', value: studioOther, color: '#c4cbd6' },
-  ].filter(s => s.value > 0);
+  if (!hasAgent && !loading) {
+    return (
+      <div className="card" style={{padding:'32px 28px',textAlign:'center',marginTop:16}}>
+        <div style={{width:48,height:48,borderRadius:12,background:'rgba(16,35,71,0.06)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px'}}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--brand-navy)" strokeWidth="1.8" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        </div>
+        <p style={{margin:'0 0 4px',fontWeight:600,fontSize:14,color:'var(--text)'}}>Desktop Agent Not Installed</p>
+        <p style={{margin:'0 0 16px',fontSize:13,color:'var(--text-muted)',maxWidth:360,marginLeft:'auto',marginRight:'auto'}}>
+          App-level tracking (Revit, AutoCAD, Teams, etc.) requires the NLA Windows desktop agent running on employee PCs.
+        </p>
+        <a href="/agent" target="_blank" style={{background:'var(--brand-navy)',color:'white',padding:'9px 18px',borderRadius:7,textDecoration:'none',fontSize:13,fontWeight:500}}>
+          View setup guide
+        </a>
+      </div>
+    );
+  }
 
   return (
-    <>
-      {/* Stats strip   matches Activity Monitor pattern */}
-      <div className="stats-row" style={{marginTop: 6}}>
-        <div className="card stat">
-          <div className="stat-label">Studio billable   {rangeLabel}</div>
-          <div className="stat-value">{fmtDec(appTotalSum)}<span className="unit">hrs</span></div>
-          <div className="stat-delta">of {fmtDec(studioTarget)}h target   {fmtDec(studioOther)}h not billed</div>
-        </div>
-        <div className="card stat">
-          <div className="stat-label">Avg. utilization</div>
-          <div className="stat-value" style={{color: studioUtil >= 85 ? '#1d8a4a' : studioUtil >= 70 ? '#a87220' : '#a52822'}}>
-            {Math.round(studioUtil)}<span className="unit">%</span>
-          </div>
-          <div className="stat-delta">across {rows.length} employees</div>
-        </div>
-        <div className="card stat">
-          <div className="stat-label">Top application</div>
-          <div className="stat-value" style={{fontSize: 22}}>
-            <span className={`bb-dot bb-${topApp.k}`} style={{marginRight: 8, width: 12, height: 12}}/>
-            {getMeta(topApp.k).name}
-          </div>
-          <div className="stat-delta">{fmtDec(topApp.hours)}h   {Math.round((topApp.hours / studioTotal) * 100)}% of tracked</div>
-        </div>
-        <div className="card stat">
-          <div className="stat-label">Highest utilization</div>
-          <div className="stat-value" style={{fontSize: 22}}>{topEmpObj ? topEmpObj.name.split(' ')[0] : 'N/A'}</div>
-          <div className="stat-delta">{Math.round(topEmp.util)}%   {fmtDec(topEmp.billable)}h billable</div>
+    <div className="card" style={{marginTop:16}}>
+      <div className="card-header">
+        <div>
+          <h3 className="card-title">Application usage today</h3>
+          <div className="card-sub">{loading ? 'Loading...' : `${total.toFixed(1)}h tracked across team`}</div>
         </div>
       </div>
-
-      <div className="card">
-        <div className="card-header" style={{display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap'}}>
-          <div>
-            <h3 className="card-title">Time breakdown by application</h3>
-            <div className="card-sub">Desktop agent   focus time only (app active + mouse/keyboard within 2 min)</div>
-          </div>
-          <div style={{flex: 1}}/>
-          <div className="am-filters">
-            {[['today','Today'],['week','This week'],['month','This month']].map(([k,l]) => (
-              <button key={k} className={`am-filter ${range === k ? 'on' : ''}`} onClick={() => setRange(k)}>{l}</button>
-            ))}
-          </div>
-          <button className="btn btn-sm"><Icon name="download" size={14}/> Export</button>
-        </div>
-
-        {/* Donut + legend split */}
-        <div className="au-split">
-          <AppUsageDonut slices={donutSlices} total={studioTotal} studioUtil={studioUtil}/>
-          <div className="au-split-legend">
-            <div className="au-split-title">Studio time mix   {rangeLabel}</div>
-            <div className="au-split-rows">
-              {donutSlices.map(s => {
-                const pct = (s.value / studioTotal) * 100;
-                return (
-                  <div key={s.k} className="au-split-row">
-                    <span className="bb-dot" style={{background: s.color}}/>
-                    <span className="au-split-name">{s.label}</span>
-                    <div className="au-split-bar"><div style={{width: `${pct}%`, background: s.color}}/></div>
-                    <span className="au-split-hrs">{fmt(s.value)}</span>
-                    <span className="au-split-pct">{pct.toFixed(1)}%</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="au-split-foot">
-              Hover any slice to isolate it   totals update live when you change the range
-            </div>
-          </div>
-        </div>
-
-        {/* Per-employee list   same row shape as Activity Monitor */}
-        <div className="am-list">
-          <div className="am-row am-row-head">
-            <div>
-              <button className="tb-sort" onClick={() => setSortBy('name')}>Employee</button>
-            </div>
-            <div className="am-now-label" style={{marginBottom: 0}}>Top apps</div>
-            <div className="am-now-label" style={{marginBottom: 0}}>Distribution</div>
-            <div style={{textAlign: 'right'}}>
-              <button className={`tb-sort ${sortBy === 'billable' ? 'on' : ''}`} onClick={() => setSortBy('billable')}>
-                Billable {sortBy === 'billable' ? ' ' : ''}
-              </button>
-            </div>
-            <div style={{textAlign: 'right'}}>
-              <button className={`tb-sort ${sortBy === 'util' ? 'on' : ''}`} onClick={() => setSortBy('util')}>
-                Util {sortBy === 'util' ? ' ' : ''}
-              </button>
-            </div>
-          </div>
-          {sortedRows.map(r => {
-            const e = empById(r.emp);
-            // Top 3 apps by hours
-            const topApps = Object.keys(r.apps)
-              .map(k => ({ k, h: r.apps[k] }))
-              .filter(a => a.h > 0)
-              .sort((a, b) => b.h - a.h)
-              .slice(0, 3);
+      {loading ? (
+        <div style={{padding:'24px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>Loading app usage data...</div>
+      ) : appData.length === 0 ? (
+        <div style={{padding:'24px',textAlign:'center',color:'var(--text-muted)',fontSize:13}}>No app usage recorded today.</div>
+      ) : (
+        <div style={{padding:'8px 0'}}>
+          {appData.map(a => {
+            const meta = getMeta(a.k);
+            const pct = total > 0 ? (a.hours/total*100) : 0;
             return (
-              <div key={r.emp} className="am-row am-row-static">
-                <div className="am-who">
-                  <div className="avatar sm">{e.initials}</div>
-                  <div style={{minWidth: 0}}>
-                    <div className="am-name">{e.name}</div>
-                    <div className="am-sub">{e.role}</div>
-                  </div>
+              <div key={a.k} style={{display:'grid',gridTemplateColumns:'14px 1fr 2fr 60px',gap:12,padding:'10px 20px',borderTop:'1px solid var(--border)',alignItems:'center',fontSize:13}}>
+                <div style={{width:10,height:10,borderRadius:2,background:meta.color}}/>
+                <span style={{fontWeight:500}}>{meta.name}</span>
+                <div style={{height:6,background:'var(--surface-muted)',borderRadius:3,overflow:'hidden'}}>
+                  <div style={{width:pct+'%',height:'100%',background:meta.color,borderRadius:3}}/>
                 </div>
-                <div className="am-now">
-                  <div className="au-chips">
-                    {topApps.map(a => (
-                      <span key={a.k} className="au-chip" title={`${getMeta(a.k).name}   ${fmt(a.h)}`}>
-                        <i className={`bb-dot bb-${a.k}`}/>
-                        {getMeta(a.k).name}
-                        <span className="au-chip-h">{fmt(a.h)}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="am-bar-col">
-                  <div className="au-bar">
-                    {Object.keys(APP_META).map(k => (
-                      r.apps[k] > 0 && <div
-                        key={k}
-                        className={`au-seg bb-${k}`}
-                        style={{width: `${(r.apps[k] / r.total) * 100}%`}}
-                        title={`${getMeta(k).name}   ${fmt(r.apps[k])}`}
-                      />
-                    ))}
-                    {r.other > 0 && <div className="au-seg bb-other" style={{width: `${(r.other / r.total) * 100}%`}} title={`Other   ${fmt(r.other)}`}/>}
-                  </div>
-                  <div className="am-totals">
-                    <span className="am-billable">{fmtDec(r.billable)}h billable</span>
-                    <span className="am-other">  {fmtDec(r.other)}h other</span>
-                  </div>
-                </div>
-                <div style={{textAlign: 'right', fontVariantNumeric: 'tabular-nums'}}>
-                  <div className="am-util-val">{fmtDec(r.billable)}<span style={{fontSize: 12, color: 'var(--text-muted)', fontWeight: 500}}>h</span></div>
-                  <div className="am-util-label">of {fmtDec(r.target * multiplier)}h</div>
-                </div>
-                <div style={{textAlign: 'right'}}>
-                  <div className={`tb-util-pill ${r.util >= 85 ? 'good' : r.util >= 70 ? 'ok' : 'low'}`}>
-                    {Math.round(r.util)}%
-                  </div>
-                </div>
+                <span style={{textAlign:'right',fontVariantNumeric:'tabular-nums',color:'var(--text-muted)'}}>{fmt(a.hours)}</span>
               </div>
             );
           })}
-          <div className="am-row am-row-foot">
-            <div className="am-foot-label">Studio total</div>
-            <div className="am-foot-apps">
-              {appTotals.slice(0, 3).map(a => (
-                <span key={a.k} className="au-chip">
-                  <i className={`bb-dot bb-${a.k}`}/>{getMeta(a.k).name}<span className="au-chip-h">{fmtDec(a.hours)}h</span>
-                </span>
-              ))}
-            </div>
-            <div/>
-            <div style={{textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600}}>{fmtDec(appTotalSum)}h</div>
-            <div style={{textAlign: 'right'}}>
-              <div className={`tb-util-pill ${studioUtil >= 85 ? 'good' : studioUtil >= 70 ? 'ok' : 'low'}`}>
-                {Math.round(studioUtil)}%
-              </div>
-            </div>
-          </div>
         </div>
-      </div>
-    </>
+      )}
+    </div>
   );
 }
+
 
 function ManagerView({ activeNav }) {
   const nav = activeNav || 'overview';
@@ -5655,9 +5789,12 @@ function ManagerView({ activeNav }) {
       {/* -- Projects ----------------------------------------- */}
       {nav === 'projects' && (
         <>
-          <div className="section-title" style={{marginTop:0}}>
-            <h2>Projects</h2>
-            <span className="hint">Hours by project this week</span>
+          <div className="section-title" style={{marginTop:0, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8}}>
+            <div>
+              <h2 style={{margin:0}}>Projects</h2>
+              <span className="hint">Hours by project this week</span>
+            </div>
+            <AddProjectButton />
           </div>
           <ProjectHours />
           <div className="section-title">
@@ -6495,6 +6632,16 @@ function App() {
   const [mgrUnlockOpen, setMgrUnlockOpen] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [notifOpen, setNotifOpen] = React.useState(false);
+  const [navCounts, setNavCounts] = React.useState({});
+
+  // Load pending approvals count for manager badge
+  React.useEffect(() => {
+    if (!user || effectiveView !== 'manager') return;
+    window.SupaEntries.getPendingSubmissions().then(pending => {
+      const groups = new Set(pending.map(e => e.user_id + '_' + (e.date || '').slice(0,7)));
+      setNavCounts({ approvals: groups.size });
+    }).catch(() => {});
+  }, [user, effectiveView, activeNav]);
   const [mgrUnlocked, setMgrUnlocked] = React.useState(() => !!sessionStorage.getItem('nla_mgr_unlocked'));
 
   React.useEffect(() => { localStorage.setItem('nla_view', view); }, [view]);
@@ -6562,7 +6709,7 @@ function App() {
 
   return (
     <div className="app" data-screen-label={`NLA Timesheet   ${effectiveView}`}>
-      <Sidebar view={effectiveView} activeNav={activeNav} setActiveNav={setActiveNav} user={user} onSettings={() => setSettingsOpen(true)} onNotifications={() => setNotifOpen(true)} />
+      <Sidebar view={effectiveView} activeNav={activeNav} setActiveNav={setActiveNav} user={user} onSettings={() => setSettingsOpen(true)} onNotifications={() => setNotifOpen(true)} navCounts={navCounts} />
       <div className="main">
         <Topbar
           view={effectiveView}
