@@ -3221,7 +3221,7 @@ function UserMenu({
   }, user.role, "   @", user.username)), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       setOpen(false);
-      setChangePwOpen(true);
+      setTimeout(() => setChangePwOpen(true), 50);
     }
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "eye",
@@ -4156,10 +4156,7 @@ function SettingsModal({
     }
   }, "Change your login password. You will need your current password."), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary",
-    onClick: () => {
-      onClose();
-      setChangePwOpen(true);
-    }
+    onClick: () => setChangePwOpen(true)
   }, "Change password")), /*#__PURE__*/React.createElement("div", {
     style: {
       borderTop: '1px solid var(--border)',
@@ -4260,9 +4257,18 @@ function Sidebar({
     onClick: () => setActiveNav(n.id)
   }, /*#__PURE__*/React.createElement(Icon, {
     name: n.icon
-  }), n.label, n.count && /*#__PURE__*/React.createElement("span", {
-    className: "nav-count"
-  }, n.count))), /*#__PURE__*/React.createElement("div", {
+  }), n.label, (navCounts[n.id] || 0) > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "nav-count",
+    style: {
+      background: 'var(--accent)',
+      color: 'white',
+      borderRadius: 10,
+      padding: '1px 6px',
+      fontSize: 10,
+      fontWeight: 700,
+      marginLeft: 'auto'
+    }
+  }, navCounts[n.id]))), /*#__PURE__*/React.createElement("div", {
     className: "sidebar-section-label"
   }, "Account"), /*#__PURE__*/React.createElement("button", {
     className: "nav-item",
@@ -5644,21 +5650,7 @@ function EmployeeView({
 window.EmployeeView = EmployeeView;
 
 // ==== activity-monitor.jsx ====
-// Manager   Activity Monitor tab
-// Real data from Supabase entries table.
-// App-level tracking (Revit/AutoCAD timeline) requires the Windows Desktop Agent.
 
-const {
-  useState: useStateAM,
-  useEffect: useEffectAM,
-  useMemo: useMemoAM
-} = React;
-const fmtH = h => {
-  if (!h || h === 0) return '0h 00m';
-  const hh = Math.floor(h);
-  const mm = Math.round((h - hh) * 60);
-  return `${hh}h ${String(mm).padStart(2, '0')}m`;
-};
 function useActivityData() {
   const [data, setData] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -5674,71 +5666,41 @@ function useActivityData() {
     };
     try {
       const [profiles, todayEntries, weekEntries] = await Promise.all([window.SupaProfiles.getAll(), window.SupaEntries.teamForDay(today), window.SupaEntries.teamSummary(getMonday(), today)]);
-      const employees = profiles.filter(p => p.user_type === 'employee');
-      const rows = employees.map(emp => {
-        const empToday = todayEntries.filter(e => e.user_id === emp.id);
-        const empWeek = weekEntries.filter(e => e.user_id === emp.id);
-        const todayHrs = empToday.reduce((s, e) => s + parseFloat(e.hours), 0);
-        const weekHrs = empWeek.reduce((s, e) => s + parseFloat(e.hours), 0);
-        const target = 45; // 8.5h x 5 days
-        const util = target > 0 ? Math.round(weekHrs / target * 100) : 0;
-
-        // Last project worked on today
-        const lastEntry = empToday.length > 0 ? empToday[empToday.length - 1] : null;
-
-        // Project breakdown from today entries
-        const projMap = {};
-        empToday.forEach(e => {
-          const k = e.project_id;
-          if (!projMap[k]) projMap[k] = {
-            name: e.project_name || k,
-            hours: 0
-          };
-          projMap[k].hours += parseFloat(e.hours);
-        });
-        const projects = Object.values(projMap).sort((a, b) => b.hours - a.hours);
-
-        // Week daily hours   Mon to Fri
-        const weekDates = Array.from({
-          length: 5
-        }, (_, i) => {
-          const d = new Date(getMonday());
-          d.setDate(d.getDate() + i);
-          return d.toISOString().split('T')[0];
-        });
-        const weekByDay = weekDates.map(date => {
-          return empWeek.filter(e => e.date === date).reduce((s, e) => s + parseFloat(e.hours), 0);
-        });
-        const hasEntriesToday = empToday.length > 0;
-        const status = hasEntriesToday ? 'active' : 'offline';
-        return {
-          id: emp.id,
-          emp: emp.id,
-          name: emp.name,
-          role: emp.role,
-          initials: emp.initials,
-          status,
-          todayHrs,
-          weekHrs,
-          util,
-          target,
-          projects,
-          weekByDay,
-          lastProject: lastEntry?.project_name || ' ',
-          entriesCount: empToday.length
-        };
+      const todayByUser = {};
+      todayEntries.forEach(e => {
+        todayByUser[e.user_id] = (todayByUser[e.user_id] || 0) + parseFloat(e.hours);
       });
+      const weekByUser = {};
+      weekEntries.forEach(e => {
+        weekByUser[e.user_id] = (weekByUser[e.user_id] || 0) + parseFloat(e.hours);
+      });
+      const lastProjByUser = {};
+      todayEntries.forEach(e => {
+        lastProjByUser[e.user_id] = e.project_name || e.project_id;
+      });
+      const employees = profiles.filter(p => p.user_type === 'employee');
+      const rows = employees.map(emp => ({
+        id: emp.id,
+        name: emp.name,
+        role: emp.role,
+        initials: emp.initials,
+        hoursToday: todayByUser[emp.id] || 0,
+        weekHrs: weekByUser[emp.id] || 0,
+        weekTarget: 45,
+        lastProject: lastProjByUser[emp.id] || null,
+        status: (todayByUser[emp.id] || 0) > 0 ? 'active' : 'offline'
+      }));
       setData(rows);
       setLastRefresh(new Date());
-    } catch (err) {
-      console.error('Activity monitor load error:', err);
+    } catch (e) {
+      console.error(e);
     }
     setLoading(false);
   };
-  useEffectAM(() => {
+  React.useEffect(() => {
     load();
-    const interval = setInterval(load, 60000); // refresh every 60s
-    return () => clearInterval(interval);
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
   }, []);
   return {
     data,
@@ -5754,317 +5716,716 @@ function ActivityMonitor() {
     lastRefresh,
     reload
   } = useActivityData();
-  const [selected, setSelected] = useStateAM(null);
-  const [filter, setFilter] = useStateAM('all');
-  const counts = useMemoAM(() => ({
-    all: data.length,
-    active: data.filter(a => a.status === 'active').length,
-    offline: data.filter(a => a.status === 'offline').length
-  }), [data]);
-  const totalToday = useMemoAM(() => data.reduce((s, a) => s + a.todayHrs, 0), [data]);
+  const [selected, setSelected] = React.useState(null);
+  const [filter, setFilter] = React.useState('all');
+  const active = data.filter(a => a.status === 'active');
+  const offline = data.filter(a => a.status === 'offline');
+  const totalHrs = data.reduce((s, a) => s + a.hoursToday, 0);
+  const studioTarget = data.length * 9;
   const filtered = filter === 'all' ? data : data.filter(a => a.status === filter);
-  const fmtRefresh = d => d ? d.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true
-  }) : ' ';
-  if (selected) {
-    return /*#__PURE__*/React.createElement(ActivityDetail, {
-      data: selected,
-      onBack: () => setSelected(null)
-    });
-  }
+  if (selected) return /*#__PURE__*/React.createElement(ActivityDetail, {
+    emp: selected,
+    onBack: () => setSelected(null)
+  });
   return /*#__PURE__*/React.createElement("div", {
     className: "content"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "section-title",
-    style: {
-      marginTop: 0
-    }
-  }, /*#__PURE__*/React.createElement("h2", null, "Activity Monitor"), /*#__PURE__*/React.createElement("span", {
-    className: "hint"
-  }, "Real data from timesheet entries   auto-refreshes every 60s", lastRefresh && `   Last updated ${fmtRefresh(lastRefresh)}`, /*#__PURE__*/React.createElement("button", {
-    onClick: reload,
-    style: {
-      marginLeft: 8,
-      background: 'none',
-      border: 'none',
-      cursor: 'pointer',
-      color: 'var(--accent)',
-      fontSize: 12,
-      padding: 0
-    }
-  }, "  Refresh"))), /*#__PURE__*/React.createElement("div", {
-    className: "stats-row"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "card stat"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "stat-label"
-  }, "Active today"), /*#__PURE__*/React.createElement("div", {
-    className: "stat-value"
-  }, loading ? ' ' : counts.active, /*#__PURE__*/React.createElement("span", {
-    className: "unit"
-  }, "/ ", counts.all)), /*#__PURE__*/React.createElement("div", {
-    className: "stat-delta up"
-  }, "Logged entries today")), /*#__PURE__*/React.createElement("div", {
-    className: "card stat"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "stat-label"
-  }, "Offline today"), /*#__PURE__*/React.createElement("div", {
-    className: "stat-value"
-  }, loading ? ' ' : counts.offline, /*#__PURE__*/React.createElement("span", {
-    className: "unit"
-  }, "employees")), /*#__PURE__*/React.createElement("div", {
-    className: "stat-delta"
-  }, "No entries logged yet")), /*#__PURE__*/React.createElement("div", {
-    className: "card stat"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "stat-label"
-  }, "Studio hours today"), /*#__PURE__*/React.createElement("div", {
-    className: "stat-value"
-  }, loading ? ' ' : totalToday.toFixed(1), /*#__PURE__*/React.createElement("span", {
-    className: "unit"
-  }, "hrs")), /*#__PURE__*/React.createElement("div", {
-    className: "stat-delta"
-  }, "Across ", counts.all, " employees")), /*#__PURE__*/React.createElement("div", {
-    className: "card stat"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "stat-label"
-  }, "App tracking"), /*#__PURE__*/React.createElement("div", {
-    className: "stat-value",
-    style: {
-      fontSize: 16,
-      paddingTop: 4
-    }
-  }, "Pending"), /*#__PURE__*/React.createElement("div", {
-    className: "stat-delta"
-  }, "Install desktop agent"))), /*#__PURE__*/React.createElement("div", {
-    className: "card"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "card-header",
     style: {
       display: 'flex',
       alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 20,
+      flexWrap: 'wrap',
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      margin: 0,
+      fontSize: 18,
+      fontWeight: 600,
+      letterSpacing: '-0.01em'
+    }
+  }, "Activity Monitor"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: 'var(--text-muted)',
+      marginTop: 3
+    }
+  }, "Real-time team activity", lastRefresh && /*#__PURE__*/React.createElement("span", null, " - Updated ", lastRefresh.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })))), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm",
+    onClick: reload,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "refresh",
+    size: 14
+  }), " Refresh")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(4,1fr)',
       gap: 12,
-      flexWrap: 'wrap'
+      marginBottom: 20
     }
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
-    className: "card-title"
-  }, "Employee activity   today"), /*#__PURE__*/React.createElement("div", {
-    className: "card-sub"
-  }, "Click any row to see project breakdown and week trend")), /*#__PURE__*/React.createElement("div", {
+  }, [{
+    label: 'Active now',
+    value: loading ? '...' : active.length,
+    sub: 'Logged today',
+    color: '#1d8a4a',
+    bg: 'rgba(29,138,74,0.08)'
+  }, {
+    label: 'Offline',
+    value: loading ? '...' : offline.length,
+    sub: 'No entries yet',
+    color: 'var(--text-muted)',
+    bg: 'var(--surface-muted)'
+  }, {
+    label: 'Studio hours',
+    value: loading ? '...' : totalHrs.toFixed(1) + 'h',
+    sub: 'Total today',
+    color: 'var(--accent)',
+    bg: 'rgba(16,35,71,0.06)'
+  }, {
+    label: 'App tracking',
+    value: 'Pending',
+    sub: 'Install agent',
+    color: 'var(--text-muted)',
+    bg: 'var(--surface-muted)'
+  }].map(s => /*#__PURE__*/React.createElement("div", {
+    key: s.label,
     style: {
-      flex: 1
+      background: s.bg,
+      borderRadius: 10,
+      padding: '14px 16px',
+      border: '1px solid var(--border)'
     }
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "am-filters"
-  }, [['all', 'All'], ['active', 'Active'], ['offline', 'Offline']].map(([f, l]) => /*#__PURE__*/React.createElement("button", {
-    key: f,
-    className: `am-filter ${filter === f ? 'on' : ''}`,
-    onClick: () => setFilter(f)
-  }, l, " ", /*#__PURE__*/React.createElement("span", {
-    className: "am-filter-count"
-  }, counts[f] ?? data.length))))), loading ? /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
-      padding: '32px',
-      textAlign: 'center',
+      fontSize: 11,
+      fontWeight: 600,
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
       color: 'var(--text-muted)',
+      marginBottom: 6
+    }
+  }, s.label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 22,
+      fontWeight: 700,
+      color: s.color,
+      fontVariantNumeric: 'tabular-nums'
+    }
+  }, s.value), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: 'var(--text-muted)',
+      marginTop: 3
+    }
+  }, s.sub)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 4,
+      marginBottom: 12
+    }
+  }, [['all', 'All', data.length], ['active', 'Active', active.length], ['offline', 'Offline', offline.length]].map(([id, lbl, cnt]) => /*#__PURE__*/React.createElement("button", {
+    key: id,
+    onClick: () => setFilter(id),
+    style: {
+      padding: '6px 14px',
+      borderRadius: 20,
+      border: '1px solid',
+      cursor: 'pointer',
+      fontSize: 12,
+      fontWeight: 500,
+      background: filter === id ? 'var(--brand-navy)' : 'transparent',
+      color: filter === id ? 'white' : 'var(--text-muted)',
+      borderColor: filter === id ? 'var(--brand-navy)' : 'var(--border)'
+    }
+  }, lbl, " ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      opacity: 0.7,
+      marginLeft: 4
+    }
+  }, cnt)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'var(--surface)',
+      borderRadius: 12,
+      border: '1px solid var(--border)',
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("table", {
+    style: {
+      width: '100%',
+      borderCollapse: 'collapse',
       fontSize: 13
     }
-  }, "Loading activity data ") : filtered.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
     style: {
-      padding: '32px',
-      textAlign: 'center',
-      color: 'var(--text-muted)',
-      fontSize: 13
+      background: 'var(--surface-muted)',
+      borderBottom: '1px solid var(--border)'
     }
-  }, "No employees found.") : /*#__PURE__*/React.createElement("div", {
-    className: "am-list"
-  }, filtered.map(a => {
-    const pct = Math.min(100, a.weekHrs / a.target * 100);
-    return /*#__PURE__*/React.createElement("button", {
-      key: a.id,
-      className: "am-row",
-      onClick: () => setSelected(a)
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "am-who"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: `am-status am-status-${a.status}`
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "dot"
-    })), /*#__PURE__*/React.createElement("div", {
-      className: "avatar sm"
-    }, a.initials), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("th", {
+    style: {
+      padding: '11px 16px',
+      textAlign: 'left',
+      fontWeight: 600,
+      fontSize: 11,
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
+      color: 'var(--text-muted)'
+    }
+  }, "Employee"), /*#__PURE__*/React.createElement("th", {
+    style: {
+      padding: '11px 16px',
+      textAlign: 'left',
+      fontWeight: 600,
+      fontSize: 11,
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
+      color: 'var(--text-muted)'
+    }
+  }, "Status"), /*#__PURE__*/React.createElement("th", {
+    style: {
+      padding: '11px 16px',
+      textAlign: 'left',
+      fontWeight: 600,
+      fontSize: 11,
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
+      color: 'var(--text-muted)'
+    }
+  }, "Last project"), /*#__PURE__*/React.createElement("th", {
+    style: {
+      padding: '11px 16px',
+      textAlign: 'right',
+      fontWeight: 600,
+      fontSize: 11,
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
+      color: 'var(--text-muted)'
+    }
+  }, "Today"), /*#__PURE__*/React.createElement("th", {
+    style: {
+      padding: '11px 16px',
+      textAlign: 'left',
+      fontWeight: 600,
+      fontSize: 11,
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
+      color: 'var(--text-muted)',
+      width: 140
+    }
+  }, "Week progress"), /*#__PURE__*/React.createElement("th", {
+    style: {
+      padding: '11px 16px',
+      textAlign: 'right',
+      fontWeight: 600,
+      fontSize: 11,
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
+      color: 'var(--text-muted)'
+    }
+  }, "Utilization"), /*#__PURE__*/React.createElement("th", {
+    style: {
+      padding: '11px 8px',
+      width: 40
+    }
+  }))), /*#__PURE__*/React.createElement("tbody", null, loading ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: 7,
+    style: {
+      padding: '40px',
+      textAlign: 'center',
+      color: 'var(--text-muted)'
+    }
+  }, "Loading...")) : filtered.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: 7,
+    style: {
+      padding: '40px',
+      textAlign: 'center',
+      color: 'var(--text-muted)'
+    }
+  }, "No employees found.")) : filtered.map(emp => {
+    const util = Math.min(100, Math.round(emp.weekHrs / emp.weekTarget * 100));
+    const utilColor = util >= 100 ? '#1d8a4a' : util >= 75 ? '#a87220' : util > 0 ? '#a52822' : 'var(--text-muted)';
+    return /*#__PURE__*/React.createElement("tr", {
+      key: emp.id,
+      onClick: () => setSelected(emp),
       style: {
-        minWidth: 0
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "am-name"
-    }, a.name), /*#__PURE__*/React.createElement("div", {
-      className: "am-sub"
-    }, a.role, a.lastProject !== ' ' ? `   ${a.lastProject}` : ''))), /*#__PURE__*/React.createElement("div", {
-      className: "am-now"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "am-now-label"
-    }, "Today"), /*#__PURE__*/React.createElement("div", {
-      className: "am-now-val"
-    }, a.status === 'active' ? /*#__PURE__*/React.createElement("span", {
-      style: {
-        color: 'var(--accent)',
-        fontWeight: 600
-      }
-    }, fmtH(a.todayHrs)) : /*#__PURE__*/React.createElement("span", {
-      className: "am-offline-text"
-    }, "No entries yet"))), /*#__PURE__*/React.createElement("div", {
-      className: "am-bar-col"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "au-bar"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "au-seg bb-revit",
-      style: {
-        width: `${pct}%`
+        borderTop: '1px solid var(--border)',
+        cursor: 'pointer',
+        transition: 'background 0.1s'
       },
-      title: `${a.weekHrs.toFixed(1)}h this week`
-    })), /*#__PURE__*/React.createElement("div", {
-      className: "am-totals"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "am-billable"
-    }, fmtH(a.weekHrs), " this week"), /*#__PURE__*/React.createElement("span", {
-      className: "am-other"
-    }, "  target ", a.target, "h"))), /*#__PURE__*/React.createElement("div", {
-      className: "am-util"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "am-util-val",
+      onMouseEnter: e => e.currentTarget.style.background = 'var(--surface-muted)',
+      onMouseLeave: e => e.currentTarget.style.background = 'transparent'
+    }, /*#__PURE__*/React.createElement("td", {
       style: {
-        color: a.util >= 100 ? '#1d8a4a' : a.util >= 75 ? '#a87220' : '#a52822'
+        padding: '13px 16px'
       }
-    }, a.util, "%"), /*#__PURE__*/React.createElement("div", {
-      className: "am-util-label"
-    }, "week util.")), /*#__PURE__*/React.createElement(Icon, {
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: 34,
+        height: 34,
+        borderRadius: 8,
+        background: 'rgba(16,35,71,0.1)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 11,
+        fontWeight: 700,
+        color: 'var(--brand-navy)',
+        flexShrink: 0
+      }
+    }, emp.initials), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontWeight: 600,
+        color: 'var(--text)'
+      }
+    }, emp.name), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        color: 'var(--text-muted)',
+        marginTop: 1
+      }
+    }, emp.role)))), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '13px 16px'
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        padding: '3px 10px',
+        borderRadius: 20,
+        fontSize: 11,
+        fontWeight: 600,
+        background: emp.status === 'active' ? 'rgba(29,138,74,0.1)' : 'var(--surface-muted)',
+        color: emp.status === 'active' ? '#1d8a4a' : 'var(--text-muted)',
+        border: '1px solid ' + (emp.status === 'active' ? 'rgba(29,138,74,0.2)' : 'var(--border)')
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        width: 6,
+        height: 6,
+        borderRadius: '50%',
+        background: emp.status === 'active' ? '#1d8a4a' : 'var(--text-muted)',
+        display: 'inline-block'
+      }
+    }), emp.status === 'active' ? 'Active' : 'No entries')), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '13px 16px',
+        color: 'var(--text-muted)',
+        fontSize: 12
+      }
+    }, emp.lastProject || '-'), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '13px 16px',
+        textAlign: 'right',
+        fontWeight: 700,
+        color: emp.hoursToday > 0 ? 'var(--accent)' : 'var(--text-muted)',
+        fontVariantNumeric: 'tabular-nums'
+      }
+    }, emp.hoursToday > 0 ? emp.hoursToday.toFixed(1) + 'h' : '-'), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '13px 16px'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        height: 6,
+        background: 'var(--surface-muted)',
+        borderRadius: 3,
+        overflow: 'hidden',
+        marginBottom: 3
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: util + '%',
+        height: '100%',
+        background: utilColor,
+        borderRadius: 3,
+        transition: 'width 0.3s'
+      }
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 10,
+        color: 'var(--text-muted)'
+      }
+    }, emp.weekHrs.toFixed(1), " / ", emp.weekTarget, "h")), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '13px 16px',
+        textAlign: 'right',
+        fontWeight: 700,
+        color: utilColor
+      }
+    }, util, "%"), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '13px 8px',
+        textAlign: 'center',
+        color: 'var(--text-muted)',
+        fontSize: 11
+      }
+    }, /*#__PURE__*/React.createElement(Icon, {
       name: "chevronR",
-      size: 16
-    }));
-  }))));
+      size: 14
+    })));
+  })), !loading && data.length > 0 && /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", {
+    style: {
+      background: 'rgba(16,35,71,0.04)',
+      borderTop: '2px solid var(--border)'
+    }
+  }, /*#__PURE__*/React.createElement("td", {
+    colSpan: 3,
+    style: {
+      padding: '10px 16px',
+      fontWeight: 600,
+      fontSize: 12,
+      color: 'var(--text-muted)',
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em'
+    }
+  }, "Studio total"), /*#__PURE__*/React.createElement("td", {
+    style: {
+      padding: '10px 16px',
+      textAlign: 'right',
+      fontWeight: 700,
+      color: 'var(--accent)',
+      fontVariantNumeric: 'tabular-nums'
+    }
+  }, totalHrs.toFixed(1), "h"), /*#__PURE__*/React.createElement("td", {
+    colSpan: 3
+  }))))));
 }
-const APP_META = {
-  revit: {
-    name: 'Autodesk Revit',
-    color: '#3fb6e6',
-    cls: 'revit'
-  },
-  acad: {
-    name: 'AutoCAD',
-    color: '#e8554e',
-    cls: 'acad'
-  },
-  navisworks: {
-    name: 'Navisworks',
-    color: '#f59e0b',
-    cls: 'sketch'
-  },
-  civil3d: {
-    name: 'Civil 3D',
-    color: '#10b981',
-    cls: 'teal'
-  },
-  sketchup: {
-    name: 'SketchUp',
-    color: '#f9a03f',
-    cls: 'sketch'
-  },
-  teams: {
-    name: 'Teams',
-    color: '#6c7dd5',
-    cls: 'teams'
-  },
-  outlook: {
-    name: 'Outlook',
-    color: '#4a90d9',
-    cls: 'outlook'
-  },
-  pdf: {
-    name: 'PDF / Bluebeam',
-    color: '#9a6fe0',
-    cls: 'pdf'
-  },
-  excel: {
-    name: 'Excel',
-    color: '#1d7a44',
-    cls: 'teal'
-  },
-  word: {
-    name: 'Word',
-    color: '#1e56a0',
-    cls: 'revit'
-  },
-  chrome: {
-    name: 'Chrome',
-    color: '#fbbc04',
-    cls: 'sketch'
-  },
-  other: {
-    name: 'Other',
-    color: '#9ca3af',
-    cls: 'other'
-  }
-};
-function AppUsageSection({
-  userId
+function ActivityDetail({
+  emp,
+  onBack
 }) {
-  const [appData, setAppData] = useStateAM(null);
-  const [loading, setLoading] = useStateAM(true);
-  useEffectAM(() => {
-    if (!userId) return;
+  const [entries, setEntries] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [weekByDay, setWeekByDay] = React.useState([0, 0, 0, 0, 0]);
+  React.useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
-    window.SupaAppUsage.forDay(userId, today).then(agg => {
-      setAppData(agg);
+    const getMonday = () => {
+      const d = new Date();
+      const day = d.getDay();
+      d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+      return d.toISOString().split('T')[0];
+    };
+    const monday = getMonday();
+    const weekDates = Array.from({
+      length: 5
+    }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(d.getDate() + i);
+      return d.toISOString().split('T')[0];
+    });
+    window.SupaEntries.teamSummary(monday, today).then(all => {
+      const mine = all.filter(e => e.user_id === emp.id);
+      setEntries(mine.filter(e => e.date === today));
+      const byDay = [0, 0, 0, 0, 0];
+      mine.forEach(e => {
+        const i = weekDates.indexOf(e.date);
+        if (i >= 0) byDay[i] += parseFloat(e.hours || 0);
+      });
+      setWeekByDay(byDay);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [userId]);
-  const hasData = appData && Object.keys(appData).length > 0;
-  const totalSecs = hasData ? Object.values(appData).reduce((s, v) => s + v, 0) : 0;
-  const fmtSecs = s => {
-    const h = Math.floor(s / 3600);
-    const m = Math.floor(s % 3600 / 60);
-    return `${h}h ${String(m).padStart(2, '0')}m`;
-  };
-  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    className: "section-title"
-  }, /*#__PURE__*/React.createElement("h2", {
+  }, [emp.id]);
+  const todayTotal = entries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
+  const weekTotal = weekByDay.reduce((a, b) => a + b, 0);
+  const util = Math.min(100, Math.round(weekTotal / emp.weekTarget * 100));
+  const utilColor = util >= 100 ? '#1d8a4a' : util >= 75 ? '#a87220' : util > 0 ? '#a52822' : 'var(--text-muted)';
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  const maxDay = Math.max(...weekByDay, 9);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "content"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: onBack,
     style: {
-      fontSize: 15
-    }
-  }, "App tracking   today"), /*#__PURE__*/React.createElement("span", {
-    className: "hint"
-  }, hasData ? 'Live from desktop agent' : 'Requires Windows Desktop Agent')), loading ? /*#__PURE__*/React.createElement("div", {
-    className: "card",
-    style: {
-      padding: '24px',
-      textAlign: 'center',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
       color: 'var(--text-muted)',
-      fontSize: 13
+      fontSize: 13,
+      marginBottom: 20,
+      padding: 0
     }
-  }, "Loading ") : !hasData ? /*#__PURE__*/React.createElement("div", {
-    className: "card",
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "chevronL",
+    size: 14
+  }), " Back to Activity Monitor"), /*#__PURE__*/React.createElement("div", {
     style: {
-      padding: '32px 28px',
-      textAlign: 'center'
+      background: 'var(--surface)',
+      borderRadius: 12,
+      border: '1px solid var(--border)',
+      padding: '20px 24px',
+      marginBottom: 16,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 20,
+      flexWrap: 'wrap'
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       width: 52,
       height: 52,
       borderRadius: 12,
+      background: 'rgba(16,35,71,0.1)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: 16,
+      fontWeight: 700,
+      color: 'var(--brand-navy)',
+      flexShrink: 0
+    }
+  }, emp.initials), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      margin: '0 0 2px',
+      fontSize: 18,
+      fontWeight: 600
+    }
+  }, emp.name), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: 'var(--text-muted)'
+    }
+  }, emp.role), /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 5,
+      marginTop: 6,
+      padding: '3px 10px',
+      borderRadius: 20,
+      fontSize: 11,
+      fontWeight: 600,
+      background: emp.status === 'active' ? 'rgba(29,138,74,0.1)' : 'var(--surface-muted)',
+      color: emp.status === 'active' ? '#1d8a4a' : 'var(--text-muted)',
+      border: '1px solid ' + (emp.status === 'active' ? 'rgba(29,138,74,0.2)' : 'var(--border)')
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 6,
+      height: 6,
+      borderRadius: '50%',
+      background: emp.status === 'active' ? '#1d8a4a' : 'var(--text-muted)',
+      display: 'inline-block'
+    }
+  }), emp.status === 'active' ? 'Active today' : 'No entries today')), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 24
+    }
+  }, [['Today', todayTotal.toFixed(1) + 'h', emp.hoursToday > 0 ? 'var(--accent)' : 'var(--text-muted)'], ['This week', weekTotal.toFixed(1) + 'h', 'var(--text)'], ['Utilization', util + '%', utilColor]].map(([l, v, c]) => /*#__PURE__*/React.createElement("div", {
+    key: l,
+    style: {
+      textAlign: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: 'var(--text-muted)',
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
+      marginBottom: 4
+    }
+  }, l), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 20,
+      fontWeight: 700,
+      color: c,
+      fontVariantNumeric: 'tabular-nums'
+    }
+  }, v))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'var(--surface)',
+      borderRadius: 12,
+      border: '1px solid var(--border)',
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '14px 18px',
+      borderBottom: '1px solid var(--border)',
+      fontWeight: 600,
+      fontSize: 13
+    }
+  }, "Today's entries"), loading ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '24px',
+      textAlign: 'center',
+      color: 'var(--text-muted)',
+      fontSize: 13
+    }
+  }, "Loading...") : entries.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '24px',
+      textAlign: 'center',
+      color: 'var(--text-muted)',
+      fontSize: 13
+    }
+  }, "No entries logged today.") : entries.map(e => /*#__PURE__*/React.createElement("div", {
+    key: e.id,
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      padding: '12px 18px',
+      borderBottom: '1px solid var(--border)',
+      fontSize: 13
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 500,
+      color: 'var(--text)'
+    }
+  }, e.project_name || e.project_id), e.title && e.title !== 'Weekly timesheet - ' + e.project_name && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: 'var(--text-muted)',
+      marginTop: 2
+    }
+  }, e.title)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700,
+      color: 'var(--accent)',
+      fontVariantNumeric: 'tabular-nums',
+      flexShrink: 0,
+      marginLeft: 12
+    }
+  }, parseFloat(e.hours).toFixed(1), "h")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'var(--surface)',
+      borderRadius: 12,
+      border: '1px solid var(--border)',
+      padding: '14px 18px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 600,
+      fontSize: 13,
+      marginBottom: 16
+    }
+  }, "Week breakdown"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'flex-end',
+      gap: 8,
+      height: 100
+    }
+  }, weekByDay.map((h, i) => {
+    const pct = maxDay > 0 ? h / maxDay * 100 : 0;
+    const isToday = i === new Date().getDay() - 1;
+    return /*#__PURE__*/React.createElement("div", {
+      key: i,
+      style: {
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 4
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 10,
+        color: isToday ? 'var(--accent)' : 'var(--text-muted)',
+        fontWeight: isToday ? 700 : 400
+      }
+    }, h > 0 ? h.toFixed(1) : ''), /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: '100%',
+        background: 'var(--surface-muted)',
+        borderRadius: 4,
+        overflow: 'hidden',
+        height: 70,
+        display: 'flex',
+        alignItems: 'flex-end'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: '100%',
+        height: pct + '%',
+        background: isToday ? 'var(--accent)' : 'rgba(16,35,71,0.25)',
+        borderRadius: 4,
+        transition: 'height 0.4s'
+      }
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        color: isToday ? 'var(--accent)' : 'var(--text-muted)',
+        fontWeight: isToday ? 600 : 400
+      }
+    }, days[i]));
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12,
+      paddingTop: 12,
+      borderTop: '1px solid var(--border)',
+      display: 'flex',
+      justifyContent: 'space-between',
+      fontSize: 12,
+      color: 'var(--text-muted)'
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Total: ", /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: 'var(--text)'
+    }
+  }, weekTotal.toFixed(1), "h")), /*#__PURE__*/React.createElement("span", null, "Target: ", /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: 'var(--text)'
+    }
+  }, emp.weekTarget, "h")), /*#__PURE__*/React.createElement("span", null, "Util: ", /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: utilColor
+    }
+  }, util, "%"))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'var(--surface)',
+      borderRadius: 12,
+      border: '1px solid var(--border)',
+      padding: '24px',
+      marginTop: 16,
+      textAlign: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 44,
+      height: 44,
+      borderRadius: 10,
       background: 'rgba(16,35,71,0.06)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      margin: '0 auto 12px',
+      margin: '0 auto 10px',
       color: 'var(--brand-navy)'
     }
   }, /*#__PURE__*/React.createElement("svg", {
-    width: "24",
-    height: "24",
+    width: "20",
+    height: "20",
     viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
@@ -6085,199 +6446,25 @@ function AppUsageSection({
       fontSize: 14,
       color: 'var(--text)'
     }
-  }, "Desktop agent not installed"), /*#__PURE__*/React.createElement("p", {
+  }, "Desktop Agent Not Installed"), /*#__PURE__*/React.createElement("p", {
     style: {
-      margin: '0 0 16px',
+      margin: '0 0 12px',
       fontSize: 13,
-      color: 'var(--text-muted)',
-      maxWidth: 360,
-      marginLeft: 'auto',
-      marginRight: 'auto'
+      color: 'var(--text-muted)'
     }
-  }, "Install the NLA Windows agent on this employee's PC to track Revit, AutoCAD, Teams usage automatically."), /*#__PURE__*/React.createElement("a", {
+  }, "Install on this employee's PC to track Revit, AutoCAD, Teams usage."), /*#__PURE__*/React.createElement("a", {
     href: "/agent",
     target: "_blank",
     style: {
       background: 'var(--brand-navy)',
       color: 'white',
-      padding: '9px 18px',
+      padding: '8px 16px',
       borderRadius: 7,
       textDecoration: 'none',
       fontSize: 13,
       fontWeight: 500
     }
-  }, "View setup guide  ")) : /*#__PURE__*/React.createElement("div", {
-    className: "card"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "card-header"
-  }, /*#__PURE__*/React.createElement("h3", {
-    className: "card-title"
-  }, "Application breakdown   today"), /*#__PURE__*/React.createElement("div", {
-    className: "card-sub"
-  }, "Focus time tracked by desktop agent   ", fmtSecs(totalSecs), " total")), /*#__PURE__*/React.createElement("table", {
-    className: "am-apps-table"
-  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Application"), /*#__PURE__*/React.createElement("th", null, "Time"), /*#__PURE__*/React.createElement("th", null, "Share"))), /*#__PURE__*/React.createElement("tbody", null, Object.entries(appData).sort(([, a], [, b]) => b - a).map(([key, secs]) => {
-    const meta = APP_META[key] || APP_META.other;
-    const pct = totalSecs > 0 ? secs / totalSecs * 100 : 0;
-    return /*#__PURE__*/React.createElement("tr", {
-      key: key
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
-      className: `bb-dot bb-${meta.cls}`
-    }), meta.name), /*#__PURE__*/React.createElement("td", {
-      className: "mono"
-    }, fmtSecs(secs)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
-      className: "am-share"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "am-share-bar"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: `am-share-fill bb-${meta.cls}`,
-      style: {
-        width: `${pct}%`
-      }
-    })), /*#__PURE__*/React.createElement("span", null, pct.toFixed(0), "%"))));
-  })))));
-}
-function ActivityDetail({
-  data,
-  onBack
-}) {
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  const maxDay = Math.max(...(data.weekByDay || [0]), 9);
-  return /*#__PURE__*/React.createElement("div", {
-    className: "content"
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "am-back",
-    onClick: onBack
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "chevronL",
-    size: 14
-  }), " Back to Activity Monitor"), /*#__PURE__*/React.createElement("div", {
-    className: "am-detail-header"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "avatar lg"
-  }, data.initials), /*#__PURE__*/React.createElement("div", {
-    style: {
-      flex: 1,
-      minWidth: 0
-    }
-  }, /*#__PURE__*/React.createElement("h2", {
-    style: {
-      margin: 0
-    }
-  }, data.name), /*#__PURE__*/React.createElement("div", {
-    className: "am-detail-sub"
-  }, data.role), /*#__PURE__*/React.createElement("div", {
-    className: "am-detail-meta"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: `am-status-pill am-status-${data.status}`
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "dot"
-  }), data.status === 'active' ? `Active   ${data.entriesCount} entries today` : 'No entries today'))), /*#__PURE__*/React.createElement("div", {
-    className: "am-detail-metric"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "m-l"
-  }, "Today"), /*#__PURE__*/React.createElement("div", {
-    className: "m-v"
-  }, fmtH(data.todayHrs)), /*#__PURE__*/React.createElement("div", {
-    className: "m-s"
-  }, data.entriesCount, " entr", data.entriesCount === 1 ? 'y' : 'ies', " logged")), /*#__PURE__*/React.createElement("div", {
-    className: "am-detail-metric"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "m-l"
-  }, "This week"), /*#__PURE__*/React.createElement("div", {
-    className: "m-v"
-  }, data.weekHrs.toFixed(1), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 14,
-      opacity: 0.6
-    }
-  }, "/", data.target, "h")), /*#__PURE__*/React.createElement("div", {
-    className: "m-s"
-  }, data.util, "% utilization"))), /*#__PURE__*/React.createElement("div", {
-    className: "section-title"
-  }, /*#__PURE__*/React.createElement("h2", {
-    style: {
-      fontSize: 15
-    }
-  }, "Projects   today"), /*#__PURE__*/React.createElement("span", {
-    className: "hint"
-  }, "From logged timesheet entries")), /*#__PURE__*/React.createElement("div", {
-    className: "card"
-  }, data.projects.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    style: {
-      padding: '24px',
-      textAlign: 'center',
-      color: 'var(--text-muted)',
-      fontSize: 13
-    }
-  }, "No entries logged today.") : /*#__PURE__*/React.createElement("table", {
-    className: "am-apps-table"
-  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Project"), /*#__PURE__*/React.createElement("th", null, "Hours"), /*#__PURE__*/React.createElement("th", null, "Share"))), /*#__PURE__*/React.createElement("tbody", null, data.projects.map((p, i) => {
-    const pct = data.todayHrs > 0 ? p.hours / data.todayHrs * 100 : 0;
-    return /*#__PURE__*/React.createElement("tr", {
-      key: i
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
-      className: "bb-dot bb-revit"
-    }), p.name), /*#__PURE__*/React.createElement("td", {
-      className: "mono"
-    }, fmtH(p.hours)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
-      className: "am-share"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "am-share-bar"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "am-share-fill bb-revit",
-      style: {
-        width: `${pct}%`
-      }
-    })), /*#__PURE__*/React.createElement("span", null, pct.toFixed(0), "%"))));
-  })))), /*#__PURE__*/React.createElement(AppUsageSection, {
-    userId: data.id
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "col-7-5"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "card"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "card-header"
-  }, /*#__PURE__*/React.createElement("h3", {
-    className: "card-title"
-  }, "This week"), /*#__PURE__*/React.createElement("div", {
-    className: "card-sub"
-  }, "Daily hours logged   target 9h/day")), /*#__PURE__*/React.createElement("div", {
-    className: "am-week"
-  }, (data.weekByDay || [0, 0, 0, 0, 0]).map((h, i) => {
-    const pct = Math.min(100, h / 9 * 100);
-    const isToday = i === new Date().getDay() - 1;
-    return /*#__PURE__*/React.createElement("div", {
-      key: i,
-      className: "am-week-day"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "am-week-bar-wrap"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: `am-week-bar ${isToday ? 'today' : ''}`,
-      style: {
-        height: `${pct}%`
-      }
-    })), /*#__PURE__*/React.createElement("div", {
-      className: "am-week-val"
-    }, h > 0 ? h.toFixed(1) : ' '), /*#__PURE__*/React.createElement("div", {
-      className: "am-week-label"
-    }, days[i]));
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "am-week-summary"
-  }, "Total: ", /*#__PURE__*/React.createElement("b", null, data.weekHrs.toFixed(1), "h"), " of ", data.target, "h target   ", data.util, "% utilization")), /*#__PURE__*/React.createElement("div", {
-    className: "card stat",
-    style: {
-      alignSelf: 'flex-start'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "stat-label"
-  }, "Entries this week"), /*#__PURE__*/React.createElement("div", {
-    className: "stat-value"
-  }, data.weekByDay ? data.weekByDay.filter(h => h > 0).length : 0, /*#__PURE__*/React.createElement("span", {
-    className: "unit"
-  }, "days active")), /*#__PURE__*/React.createElement("div", {
-    className: "stat-delta"
-  }, data.weekHrs.toFixed(1), "h / ", data.target, "h target"))));
+  }, "View setup guide")));
 }
 window.ActivityMonitor = ActivityMonitor;
 
@@ -6329,7 +6516,7 @@ function TeamOverviewTable() {
     const e = new Date(to + 'T00:00:00');
     if (view === 'week') {
       const isThisWeek = weekOffset === 0;
-      const prefix = isThisWeek ? 'This week   ' : weekOffset === -1 ? 'Last week   ' : '';
+      const prefix = isThisWeek ? 'This week - ' : weekOffset === -1 ? 'Last week - ' : weekOffset < -1 ? Math.abs(weekOffset) + ' weeks ago - ' : 'Next week - ';
       return prefix + s.toLocaleDateString('en-GB', {
         day: 'numeric',
         month: 'short'
@@ -6450,7 +6637,7 @@ function TeamOverviewTable() {
   }, label))), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-sm",
     onClick: () => view === 'week' ? setWeekOffset(w => w - 1) : setMonthOffset(m => m - 1)
-  }, " "), /*#__PURE__*/React.createElement("button", {
+  }, "\u2190"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-sm",
     style: {
       fontSize: 11
@@ -6460,7 +6647,7 @@ function TeamOverviewTable() {
     className: "btn btn-sm",
     disabled: view === 'week' && weekOffset >= 0 || view === 'month' && monthOffset >= 0,
     onClick: () => view === 'week' ? setWeekOffset(w => w + 1) : setMonthOffset(m => m + 1)
-  }, " "), /*#__PURE__*/React.createElement("button", {
+  }, "\u2192"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-sm",
     onClick: () => window.exportTeamExcel && window.exportTeamExcel(),
     style: {
@@ -7640,7 +7827,7 @@ function ProjectHours() {
   }, lbl))), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-sm",
     onClick: () => setOffset(o => o - 1)
-  }, " "), /*#__PURE__*/React.createElement("button", {
+  }, "\u2190"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-sm",
     style: {
       fontSize: 11
@@ -7650,7 +7837,7 @@ function ProjectHours() {
     className: "btn btn-sm",
     disabled: offset >= 0,
     onClick: () => setOffset(o => o + 1)
-  }, " "))), loading ? /*#__PURE__*/React.createElement("div", {
+  }, "\u2192"))), loading ? /*#__PURE__*/React.createElement("div", {
     style: {
       padding: '16px',
       color: 'var(--text-muted)',
@@ -7754,7 +7941,7 @@ function WeekTotalsBars() {
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn btn-sm",
     onClick: () => setWeekOffset(w => w - 1)
-  }, " "), /*#__PURE__*/React.createElement("button", {
+  }, "\u2190"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-sm",
     style: {
       fontSize: 11
@@ -7765,7 +7952,7 @@ function WeekTotalsBars() {
     className: "btn btn-sm",
     disabled: weekOffset >= 0,
     onClick: () => setWeekOffset(w => w + 1)
-  }, " "))), /*#__PURE__*/React.createElement("div", {
+  }, "\u2192"))), /*#__PURE__*/React.createElement("div", {
     className: "day-bars",
     style: {
       height: 120
