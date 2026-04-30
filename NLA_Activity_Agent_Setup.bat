@@ -1,202 +1,131 @@
 @echo off
-setlocal enabledelayedexpansion
-title NLA Activity Agent - Setup
-color 0A
+setlocal
+
+:: Always keep window open
+title NLA Activity Agent Setup
 
 echo.
-echo  ================================================
+echo  ============================================================
 echo   NLA Activity Agent - Setup
 echo   Nature Landscape Architects
-echo  ================================================
+echo  ============================================================
+echo.
+echo  Do NOT close this window until setup is complete.
 echo.
 
-:: Keep window open on any error
-if "%1"=="/debug" set DEBUG=1
+:: ── Find Python ──────────────────────────────────────────────
+echo  Step 1: Finding Python...
 
-:: ── Step 1: Find Python ───────────────────────────────────────
-echo  [1/5] Checking Python...
+set "PY="
 
-set PYTHON=
-for %%P in (
-    "%LOCALAPPDATA%\Python\bin\python.exe"
-    "%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
-    "%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
-    "%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
-    "%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
-    "C:\Python313\python.exe"
-    "C:\Python312\python.exe"
-    "C:\Python311\python.exe"
-    "C:\Python310\python.exe"
-) do (
-    if exist %%P (
-        set PYTHON=%%P
-        goto :python_found
-    )
+:: Check specific known paths
+if exist "%LOCALAPPDATA%\Python\bin\python.exe" set "PY=%LOCALAPPDATA%\Python\bin\python.exe"
+if exist "%LOCALAPPDATA%\Programs\Python\Python313\python.exe" set "PY=%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
+if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" set "PY=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" set "PY=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
+if exist "%LOCALAPPDATA%\Programs\Python\Python310\python.exe" set "PY=%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
+if exist "C:\Python313\python.exe" set "PY=C:\Python313\python.exe"
+if exist "C:\Python312\python.exe" set "PY=C:\Python312\python.exe"
+if exist "C:\Python311\python.exe" set "PY=C:\Python311\python.exe"
+
+:: Try system PATH if not found yet
+if "%PY%"=="" (
+    where python >nul 2>&1 && set "PY=python"
+)
+if "%PY%"=="" (
+    where py >nul 2>&1 && set "PY=py"
 )
 
-python --version >nul 2>&1
-if not errorlevel 1 (
-    set PYTHON=python
-    goto :python_found
+if "%PY%"=="" (
+    echo.
+    echo  ERROR: Python not found on this PC.
+    echo.
+    echo  FIX: Install Python from https://www.python.org/downloads/
+    echo       During install, check "Add Python to PATH"
+    echo       Then run this file again.
+    echo.
+    start https://www.python.org/downloads/
+    pause
+    exit /b 1
 )
 
-py --version >nul 2>&1
-if not errorlevel 1 (
-    set PYTHON=py
-    goto :python_found
-)
-
+echo  Found Python: %PY%
+"%PY%" --version
 echo.
-echo  [!] Python not found on this PC.
+
+:: ── Create folders ────────────────────────────────────────────
+echo  Step 2: Creating agent folder...
+set "DIR=%APPDATA%\NLA_Agent"
+mkdir "%DIR%" 2>nul
+echo  Folder: %DIR%
 echo.
-echo  Please install Python first:
-echo    1. Go to: https://www.python.org/downloads/
-echo    2. Download Python 3.12
-echo    3. During install: CHECK "Add Python to PATH"
-echo    4. Then run this setup again.
-echo.
-echo  Opening Python download page...
-start https://www.python.org/downloads/
-echo.
-pause
-exit /b 1
 
-:python_found
-echo      Found: %PYTHON%
+:: ── Download agent script ─────────────────────────────────────
+echo  Step 3: Downloading agent script...
+set "SCRIPT=%DIR%\nla_agent.py"
+set "URL=https://nla-timesheet-5jc7.vercel.app/nla_agent.py"
 
-:: ── Step 2: Create agent folder ──────────────────────────────
-echo.
-echo  [2/5] Preparing agent folder...
-
-set AGENT_DIR=%APPDATA%\NLA_Agent
-if not exist "%AGENT_DIR%" mkdir "%AGENT_DIR%"
-echo      Folder: %AGENT_DIR%
-
-:: ── Step 3: Download agent script ────────────────────────────
-echo.
-echo  [3/5] Downloading agent script...
-
-set AGENT_SCRIPT=%AGENT_DIR%\nla_agent.py
-set DOWNLOAD_URL=https://nla-timesheet-5jc7.vercel.app/nla_agent.py
-
-powershell -NoProfile -NonInteractive -Command "try { Invoke-WebRequest -Uri '%DOWNLOAD_URL%' -OutFile '%AGENT_SCRIPT%' -UseBasicParsing; Write-Host '     Downloaded successfully.' } catch { Write-Host '     ERROR: ' $_.Exception.Message; exit 1 }"
+"%PY%" -c "import urllib.request; urllib.request.urlretrieve('%URL%', r'%SCRIPT%'); print('  Downloaded OK')"
 
 if errorlevel 1 (
     echo.
-    echo  [!] Download failed. Check internet connection.
-    echo      Trying to use existing script if available...
-    if not exist "%AGENT_SCRIPT%" (
-        echo  [!] No agent script found. Cannot continue.
-        pause
-        exit /b 1
-    )
+    echo  ERROR: Download failed. Check internet connection.
+    echo  URL: %URL%
+    pause
+    exit /b 1
 )
-echo      Script saved.
-
-:: ── Step 4: Install Python packages ──────────────────────────
 echo.
-echo  [4/5] Installing required packages...
-echo      (This may take 2-3 minutes - please wait)
 
-%PYTHON% -m pip install --quiet --upgrade pip 2>nul
-%PYTHON% -m pip install --quiet pywin32 pynput pystray Pillow requests psutil pyinstaller
+:: ── Install packages ──────────────────────────────────────────
+echo  Step 4: Installing required packages (2-3 minutes)...
+echo  Please wait - do not close this window.
+echo.
+
+"%PY%" -m pip install --quiet --upgrade pip
+"%PY%" -m pip install --quiet pywin32 pynput pystray Pillow requests psutil
 
 if errorlevel 1 (
     echo.
-    echo  [!] Some packages failed to install.
-    echo      Trying to run anyway...
+    echo  WARNING: Some packages failed. Trying anyway...
 )
-echo      Packages installed.
-
-:: ── Step 5: Build the .exe ───────────────────────────────────
-echo.
-echo  [5/5] Building NLA Activity Agent.exe...
-echo      (This takes 2-4 minutes - DO NOT CLOSE this window)
+echo  Packages ready.
 echo.
 
-set BUILD_TEMP=%TEMP%\nla_build_%RANDOM%
-mkdir "%BUILD_TEMP%" 2>nul
+:: ── Create launcher script ────────────────────────────────────
+echo  Step 5: Creating launcher...
 
-%PYTHON% -m PyInstaller ^
-    --onefile ^
-    --noconsole ^
-    --name "NLA Activity Agent" ^
-    --hidden-import=win32gui ^
-    --hidden-import=win32process ^
-    --hidden-import=win32api ^
-    --hidden-import=win32con ^
-    --hidden-import=pywintypes ^
-    --hidden-import=psutil ^
-    --hidden-import=pynput.keyboard._win32 ^
-    --hidden-import=pynput.mouse._win32 ^
-    --hidden-import=pystray._win32 ^
-    --collect-all=pystray ^
-    --collect-all=pynput ^
-    --distpath="%AGENT_DIR%" ^
-    --workpath="%BUILD_TEMP%" ^
-    --specpath="%BUILD_TEMP%" ^
-    --log-level=ERROR ^
-    "%AGENT_SCRIPT%"
+:: Write a simple launcher .bat that can be double-clicked
+set "LAUNCHER=%DIR%\Run NLA Agent.bat"
+(
+echo @echo off
+echo start "" "%PY%" "%SCRIPT%"
+) > "%LAUNCHER%"
 
-set AGENT_EXE=%AGENT_DIR%\NLA Activity Agent.exe
+:: Create desktop shortcut via Python (simpler than PowerShell)
+"%PY%" -c "import os,sys; script=r'%SCRIPT%'; py=r'%PY%'; desktop=os.path.join(os.environ['USERPROFILE'],'Desktop'); launcher=r'%LAUNCHER%'; content=f'@echo off\nstart \"\" \"{py}\" \"{script}\"\n'; open(os.path.join(desktop,'NLA Activity Agent.bat'),'w').write(content); print('  Desktop shortcut created')"
 
-if exist "%AGENT_EXE%" (
-    echo      Build complete!
-    rmdir /s /q "%BUILD_TEMP%" 2>nul
-) else (
-    echo.
-    echo  [!] Build failed - will run from Python script directly.
-    set AGENT_EXE=
-)
+:: Add to Windows startup
+"%PY%" -c "import os,sys; script=r'%SCRIPT%'; py=r'%PY%'; startup=os.path.join(os.environ['APPDATA'],'Microsoft','Windows','Start Menu','Programs','Startup'); launcher=os.path.join(startup,'NLA Activity Agent.bat'); content=f'@echo off\nstart \"\" \"{py}\" \"{script}\"\n'; open(launcher,'w').write(content); print('  Added to Windows startup')"
 
-:: ── Create desktop shortcut ───────────────────────────────────
 echo.
-echo  Creating desktop shortcut...
-
-set SHORTCUT=%USERPROFILE%\Desktop\NLA Activity Agent.lnk
-if defined AGENT_EXE (
-    powershell -NoProfile -NonInteractive -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT%');$s.TargetPath='%AGENT_EXE%';$s.Description='NLA Activity Agent';$s.Save()"
-) else (
-    powershell -NoProfile -NonInteractive -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT%');$s.TargetPath='%PYTHON%';$s.Arguments='%AGENT_SCRIPT%';$s.Description='NLA Activity Agent';$s.Save()"
-)
-echo      Desktop shortcut created.
-
-:: ── Add to Windows startup ────────────────────────────────────
-set STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\NLA Activity Agent.lnk
-if defined AGENT_EXE (
-    powershell -NoProfile -NonInteractive -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut('%STARTUP%');$s.TargetPath='%AGENT_EXE%';$s.WindowStyle=7;$s.Description='NLA Activity Agent';$s.Save()"
-) else (
-    powershell -NoProfile -NonInteractive -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut('%STARTUP%');$s.TargetPath='%PYTHON%';$s.Arguments='%AGENT_SCRIPT%';$s.WindowStyle=7;$s.Save()"
-)
-echo      Added to Windows startup (auto-starts on every login).
-
-:: ── Done! ─────────────────────────────────────────────────────
+echo  ============================================================
+echo   SETUP COMPLETE!
+echo  ============================================================
 echo.
-echo  ================================================
-echo   DONE! NLA Activity Agent is ready.
-echo  ================================================
+echo  The agent is starting now...
+echo  Look for the NLA icon in your system tray (bottom-right).
 echo.
-echo   What happens now:
-echo    - The agent will launch in 3 seconds
-echo    - Look for the NLA icon in your system tray
-echo    - Right-click tray icon: Status / Open Dashboard / Quit
-echo    - It will auto-start every time Windows boots
+echo  - Desktop shortcut: "NLA Activity Agent.bat" on Desktop
+echo  - Auto-starts every time Windows boots
 echo.
-echo   Location: %AGENT_DIR%
-echo.
-timeout /t 3 /nobreak >nul
 
 :: ── Launch the agent ──────────────────────────────────────────
-if defined AGENT_EXE (
-    if exist "%AGENT_EXE%" (
-        start "" "%AGENT_EXE%"
-        goto :done
-    )
-)
-start "" %PYTHON% "%AGENT_SCRIPT%"
+start "" "%PY%" "%SCRIPT%"
 
-:done
-echo  Agent launched! You can close this window.
+echo  Agent launched! Login with your NLA username and password.
 echo.
-timeout /t 5 /nobreak >nul
-exit /b 0
+echo  To check if running:
+echo    - Look for NLA tray icon (bottom right)
+echo    - Or open Task Manager and find "python.exe"
+echo.
+timeout /t 8 /nobreak

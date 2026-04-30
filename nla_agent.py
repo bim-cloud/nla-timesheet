@@ -27,20 +27,40 @@ import requests
 IS_WINDOWS = sys.platform == 'win32'
 
 if IS_WINDOWS:
-    import win32gui
-    import win32process
+    try:
+        import win32gui
+        import win32process
+        HAS_WIN32 = True
+    except ImportError:
+        HAS_WIN32 = False
+        print("[NLA Agent] WARNING: pywin32 not found. Run: pip install pywin32")
     try:
         import psutil
         HAS_PSUTIL = True
     except ImportError:
         HAS_PSUTIL = False
-    from pynput import mouse as pmouse, keyboard as pkeyboard
-    import pystray
-    from PIL import Image, ImageDraw
-    import tkinter as tk
-    from tkinter import ttk, messagebox
+    try:
+        from pynput import mouse as pmouse, keyboard as pkeyboard
+        HAS_PYNPUT = True
+    except ImportError:
+        HAS_PYNPUT = False
+        print("[NLA Agent] WARNING: pynput not found. Run: pip install pynput")
+    try:
+        import pystray
+        from PIL import Image, ImageDraw
+        HAS_TRAY = True
+    except ImportError:
+        HAS_TRAY = False
+        print("[NLA Agent] WARNING: pystray/Pillow not found. Run: pip install pystray Pillow")
+    try:
+        import tkinter as tk
+        from tkinter import ttk, messagebox
+        HAS_TK = True
+    except ImportError:
+        HAS_TK = False
+        print("[NLA Agent] WARNING: tkinter not available")
 else:
-    # Allow import on non-Windows for development/testing
+    HAS_WIN32 = HAS_PYNPUT = HAS_TRAY = HAS_TK = False
     HAS_PSUTIL = False
     print("[NLA Agent] Running in non-Windows mode (no tracking)")
 
@@ -196,21 +216,33 @@ def sb_sync(user_id: str, focus_snapshot: dict) -> bool:
 
 
 def sb_upsert_profile(user: dict):
+    """Update agent heartbeat in profiles table."""
     try:
         requests.patch(
             f"{SUPABASE_URL}/rest/v1/profiles",
-            headers={**sb_headers(), "Prefer": "resolution=merge-duplicates"},
+            headers={**sb_headers(), "Prefer": "return=minimal"},
             params={"id": f"eq.{user['id']}"},
-            json={"agent_version": AGENT_VERSION, "agent_last_seen": datetime.datetime.utcnow().isoformat() + "Z"},
+            json={
+                "agent_version": AGENT_VERSION,
+                "agent_last_seen": datetime.datetime.utcnow().isoformat() + "Z",
+            },
             timeout=10,
         )
     except Exception:
         pass
 
 
+def heartbeat_loop():
+    """Send heartbeat to Supabase every 5 minutes while running."""
+    while state["running"]:
+        if state["user_id"]:
+            sb_upsert_profile({"id": state["user_id"]})
+        time.sleep(300)  # Every 5 minutes
+
+
 # ── Window detection ──────────────────────────────────────────────────────────
 def get_active_app() -> str:
-    if not IS_WINDOWS:
+    if not IS_WINDOWS or not HAS_WIN32:
         return "other"
     try:
         hwnd = win32gui.GetForegroundWindow()
@@ -280,12 +312,15 @@ def tracking_loop():
 
 # ── System tray ───────────────────────────────────────────────────────────────
 def make_tray_icon():
-    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    img = Image.new("RGBA", (64, 64), (16, 35, 71, 255))
     d = ImageDraw.Draw(img)
-    # Navy background circle
-    d.ellipse([0, 0, 63, 63], fill=(16, 35, 71, 255))
-    # White "N"
-    d.text((18, 14), "N", fill=(255, 255, 255))
+    # White "N" text - simple rectangle shapes
+    # N left bar
+    d.rectangle([14, 12, 22, 52], fill=(255, 255, 255))
+    # N diagonal
+    d.polygon([22, 12, 42, 40, 42, 12, 50, 12, 50, 52, 42, 52, 22, 24, 22, 52, 14, 52], fill=(255, 255, 255))
+    # N right bar
+    d.rectangle([42, 12, 50, 52], fill=(255, 255, 255))
     return img
 
 
@@ -400,13 +435,23 @@ def start_tray(user: dict):
     t = threading.Thread(target=tracking_loop, daemon=True)
     t.start()
 
+    # Start heartbeat thread (updates agent_last_seen every 5 min)
+    hb = threading.Thread(target=heartbeat_loop, daemon=True)
+    hb.start()
+
     # Start input listeners
-    if IS_WINDOWS:
+    if IS_WINDOWS and HAS_PYNPUT:
         pmouse.Listener(
             on_move=on_input, on_click=on_input, on_scroll=on_input, daemon=True
         ).start()
         pkeyboard.Listener(on_press=on_input, daemon=True).start()
 
+    if not HAS_TRAY:
+        log("ERROR: pystray not installed. Run: pip install pystray Pillow")
+        import time
+        while state["running"]:
+            time.sleep(60)
+        return
     # Build tray menu
     menu = pystray.Menu(
         pystray.MenuItem(
@@ -559,6 +604,9 @@ def main():
         return
 
     log(f"NLA Activity Agent v{AGENT_VERSION} starting...")
+    if not HAS_TK:
+        log("ERROR: tkinter not available. Cannot show login window.")
+        return
     user = show_login()
     if user:
         log(f"Logged in as {user['name']} ({user['username']})")
