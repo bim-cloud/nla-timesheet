@@ -1771,19 +1771,53 @@ const SupaEntries = {
       hours: entry.hours,
       status: 'draft'
     };
-    // Add time fields if provided (requires Supabase migration)
-    if (entry.start_time !== undefined) insertData.start_time = entry.start_time;
-    if (entry.end_time !== undefined) insertData.end_time = entry.end_time;
-    if (entry.lunch_break !== undefined) insertData.lunch_break = entry.lunch_break;
-    const {
-      data,
+    // Try with time fields first, fallback without if columns missing
+    const tryInsert = async data => {
+      const {
+        data: result,
+        error
+      } = await sb.from('entries').insert(data).select().single();
+      if (error) return {
+        result: null,
+        error
+      };
+      return {
+        result,
+        error: null
+      };
+    };
+    // Attempt with time fields
+    const insertWithTime = {
+      ...insertData
+    };
+    if (entry.start_time !== undefined) insertWithTime.start_time = entry.start_time;
+    if (entry.end_time !== undefined) insertWithTime.end_time = entry.end_time;
+    if (entry.lunch_break !== undefined) insertWithTime.lunch_break = entry.lunch_break;
+    let {
+      result,
       error
-    } = await sb.from('entries').insert(insertData).select().single();
+    } = await tryInsert(insertWithTime);
+    // If failed (likely missing columns), retry without time fields
+    if (error) {
+      console.warn('Insert with time fields failed, retrying without:', error.message);
+      const r2 = await tryInsert(insertData);
+      result = r2.result;
+      error = r2.error;
+    }
     if (error) {
       console.warn('Entry insert error:', error.message);
       return null;
     }
-    return data;
+    // Merge time fields into result so component gets them even if not in DB
+    if (result) {
+      result._start_time = entry.start_time;
+      result._end_time = entry.end_time;
+      result._lunch_break = entry.lunch_break;
+      if (!result.start_time) result.start_time = entry.start_time;
+      if (!result.end_time) result.end_time = entry.end_time;
+      if (!result.lunch_break) result.lunch_break = entry.lunch_break;
+    }
+    return result;
   },
   // Delete an entry
   async remove(entryId) {
@@ -6266,27 +6300,28 @@ function WeeklyView({
   weekDates,
   weekOffset
 }) {
-  // weekEntries: array of entry objects from Supabase for this week
+  // Core data - loaded once per week, cloned deeply
   const [weekEntries, setWeekEntries] = useStateEmp([]);
   const [loading, setLoading] = useStateEmp(true);
 
-  // Per-entry edit state
+  // Edit state - keyed by entry ID, only ONE entry can be edited at a time
   const [editingId, setEditingId] = useStateEmp(null);
   const [editDraft, setEditDraft] = useStateEmp({});
 
-  // Per-day add form state (keyed by date string e.g. "2026-05-01")
+  // Per-day add form state - keyed by date string
   const [showAddFor, setShowAddFor] = useStateEmp(null);
   const [addDrafts, setAddDrafts] = useStateEmp({});
   const [dayLunch, setDayLunch] = useStateEmp({});
   const [saving, setSaving] = useStateEmp(null);
+
+  // Delete confirmation
+  const [confirmDelete, setConfirmDelete] = useStateEmp(null); // {id, title, date}
+
   const projects = window.DATA.PROJECTS || [];
   const defaultProj = projects[0]?.id || '';
-
-  // --- Date helpers (FIXED: no timezone conversion) ---
   const pad = n => String(n).padStart(2, '0');
-  // weekDates are already correct ISO strings from TimesheetHub
 
-  // --- Per-day draft helpers ---
+  //    Per-day draft helpers                                        
   const getDraft = date => addDrafts[date] || {
     start_time: '08:30',
     end_time: '17:30',
@@ -6301,13 +6336,13 @@ function WeeklyView({
       ...upd
     }
   }));
-  const getLunch = date => dayLunch[date] !== undefined ? dayLunch[date] : '1.00';
+  const getLunch = date => dayLunch[date] !== undefined ? String(dayLunch[date]) : '1.00';
   const setLunch = (date, val) => setDayLunch(prev => ({
     ...prev,
     [date]: val
   }));
 
-  // --- Net hours calculation ---
+  //    Net hours calculation                                         
   const calcNet = (start, end, lunch) => {
     if (!start || !end) return 0;
     const toH = t => {
@@ -6317,46 +6352,35 @@ function WeeklyView({
     return Math.round(Math.max(0, toH(end) - toH(start) - parseFloat(lunch || 0)) * 100) / 100;
   };
 
-  // --- Load entries ---
+  //    Load entries (deep clone to avoid shared reference mutations)  
   useEffectEmp(() => {
     if (!user) return;
     setLoading(true);
     setWeekEntries([]);
+    setEditingId(null);
     window.SupaEntries.teamSummary(weekDates[0], weekDates[4]).then(all => {
-      // Deep clone to avoid shared reference bugs
       const mine = all.filter(e => e.user_id === user.id).map(e => ({
         ...e
-      }));
+      })); // deep clone each entry
       setWeekEntries(mine);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [user?.id, weekDates[0]]);
 
-  // --- Build per-day map (FIXED: exact string comparison) ---
+  //    Build per-day map                                             
   const byDate = {};
   weekDates.forEach(d => {
     byDate[d] = [];
   });
   weekEntries.forEach(e => {
-    if (e.date && byDate[e.date]) {
+    if (e.date && byDate.hasOwnProperty(e.date)) {
       byDate[e.date].push(e);
     }
   });
   const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
 
-  // --- CRUD ---
-  const removeEntry = async id => {
-    if (!id) return;
-    // Remove immediately from UI
-    setWeekEntries(prev => prev.filter(e => e.id !== id));
-    // Then delete from DB
-    try {
-      await window.SupaEntries.remove(id);
-    } catch (err) {
-      console.error('Delete error:', err);
-    }
-  };
+  //    Add entry                                                    
   const saveAdd = async date => {
     const draft = getDraft(date);
     const lunch = getLunch(date);
@@ -6365,7 +6389,34 @@ function WeeklyView({
     setSaving(date);
     const pid = draft.project || defaultProj;
     const proj = projects.find(p => p.id === pid);
-    const newEntry = {
+
+    // Generate a guaranteed-unique temporary ID
+    const tempId = 'tmp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+
+    // Add to UI immediately with temp ID
+    const optimistic = {
+      id: tempId,
+      // unique temp ID - prevents edit-all-entries bug
+      user_id: user.id,
+      date,
+      hours: net,
+      project_id: pid,
+      project_name: proj ? proj.name : pid,
+      title: draft.title,
+      notes: draft.remarks || '',
+      start_time: draft.start_time,
+      end_time: draft.end_time,
+      lunch_break: parseFloat(lunch || 0)
+    };
+    setWeekEntries(prev => [...prev, optimistic]);
+    setDraft(date, {
+      title: '',
+      remarks: ''
+    });
+    setShowAddFor(null);
+
+    // Save to DB and replace temp ID with real ID
+    const saved = await window.SupaEntries.add(user.id, {
       project: pid,
       type: 'design',
       title: draft.title,
@@ -6375,26 +6426,25 @@ function WeeklyView({
       start_time: draft.start_time,
       end_time: draft.end_time,
       lunch_break: parseFloat(lunch || 0)
-    };
-    const saved = await window.SupaEntries.add(user.id, newEntry);
-    // Only add to state if we got a real ID back (avoids null-id delete bug)
-    if (saved && saved.id) {
-      setWeekEntries(prev => [...prev, {
-        ...newEntry,
-        id: saved.id,
-        user_id: user.id,
-        project_id: pid,
-        project_name: proj ? proj.name : pid
-      }]);
-    }
-    setDraft(date, {
-      title: '',
-      remarks: ''
     });
-    setShowAddFor(null);
+    if (saved && saved.id) {
+      // Replace the temp-ID entry with the real one
+      setWeekEntries(prev => prev.map(e => e.id === tempId ? {
+        ...optimistic,
+        ...saved,
+        id: saved.id
+      } : e));
+    } else {
+      // DB failed - remove the optimistic entry
+      setWeekEntries(prev => prev.filter(e => e.id !== tempId));
+      alert('Failed to save entry. Please try again.');
+    }
     setSaving(null);
   };
+
+  //    Edit entry                                                   
   const startEdit = entry => {
+    if (!entry.id || String(entry.id).startsWith('tmp_')) return; // never edit temp entries
     setEditingId(entry.id);
     setEditDraft({
       start_time: entry.start_time || '08:30',
@@ -6404,9 +6454,31 @@ function WeeklyView({
       remarks: entry.notes || ''
     });
   };
-  const saveEdit = async (id, date) => {
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditDraft({});
+  };
+  const saveEdit = async (entryId, date) => {
     const lunch = getLunch(date);
     const net = calcNet(editDraft.start_time, editDraft.end_time, lunch);
+    const proj = projects.find(p => p.id === editDraft.project);
+
+    // Update UI immediately
+    setWeekEntries(prev => prev.map(e => e.id === entryId ? {
+      ...e,
+      hours: net,
+      title: editDraft.title,
+      notes: editDraft.remarks,
+      start_time: editDraft.start_time,
+      end_time: editDraft.end_time,
+      lunch_break: parseFloat(lunch || 0),
+      project_id: editDraft.project,
+      project_name: proj ? proj.name : e.project_name
+    } : e));
+    setEditingId(null);
+    setEditDraft({});
+
+    // Persist to DB
     try {
       await window.sb.from('entries').update({
         hours: net,
@@ -6414,25 +6486,41 @@ function WeeklyView({
         notes: editDraft.remarks,
         start_time: editDraft.start_time,
         end_time: editDraft.end_time,
-        lunch_break: parseFloat(lunch || 0)
-      }).eq('id', id);
-    } catch (e) {
-      console.error('Update error:', e);
+        lunch_break: parseFloat(lunch || 0),
+        project_id: editDraft.project,
+        project_name: proj ? proj.name : undefined
+      }).eq('id', entryId);
+    } catch (err) {
+      console.error('Update failed:', err);
     }
-    setWeekEntries(prev => prev.map(e => e.id === id ? {
-      ...e,
-      hours: net,
-      title: editDraft.title,
-      notes: editDraft.remarks,
-      start_time: editDraft.start_time,
-      end_time: editDraft.end_time,
-      lunch_break: parseFloat(lunch || 0)
-    } : e));
-    setEditingId(null);
+  };
+
+  //    Delete with confirmation                                      
+  const confirmAndDelete = entry => {
+    setConfirmDelete({
+      id: entry.id,
+      title: entry.title || 'this entry',
+      date: entry.date
+    });
+  };
+  const doDelete = async () => {
+    if (!confirmDelete) return;
+    const {
+      id
+    } = confirmDelete;
+    setConfirmDelete(null);
+    // Remove from UI
+    setWeekEntries(prev => prev.filter(e => e.id !== id));
+    // Remove from DB
+    try {
+      await window.SupaEntries.remove(id);
+    } catch (err) {
+      console.error('Delete error:', err);
+    }
   };
   const grandTotal = weekEntries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
 
-  // --- Styles ---
+  //    Styles                                                        
   const inSt = {
     border: '1px solid var(--border)',
     borderRadius: 6,
@@ -6444,7 +6532,7 @@ function WeeklyView({
     width: '100%'
   };
   const LBL = ({
-    children
+    text
   }) => /*#__PURE__*/React.createElement("label", {
     style: {
       fontSize: 9,
@@ -6455,7 +6543,7 @@ function WeeklyView({
       display: 'block',
       marginBottom: 3
     }
-  }, children);
+  }, text);
   const thSt = {
     padding: '8px 12px',
     fontSize: 10,
@@ -6468,14 +6556,64 @@ function WeeklyView({
     borderBottom: '2px solid var(--border)',
     whiteSpace: 'nowrap'
   };
-  return /*#__PURE__*/React.createElement("div", null, loading && /*#__PURE__*/React.createElement("div", {
+  return /*#__PURE__*/React.createElement("div", null, confirmDelete && /*#__PURE__*/React.createElement("div", {
+    className: "modal-backdrop",
+    onClick: () => setConfirmDelete(null)
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "modal-card",
+    onClick: e => e.stopPropagation(),
+    style: {
+      maxWidth: 400,
+      marginTop: 120,
+      background: 'var(--surface)',
+      borderRadius: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '20px 24px 16px'
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      margin: '0 0 8px',
+      fontSize: 15
+    }
+  }, "Delete entry?"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      color: 'var(--text-muted)',
+      lineHeight: 1.5
+    }
+  }, "This will permanently delete ", /*#__PURE__*/React.createElement("strong", null, "\"", confirmDelete.title, "\""), ". This action cannot be undone.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '0 24px 20px',
+      display: 'flex',
+      gap: 8,
+      justifyContent: 'flex-end'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => setConfirmDelete(null)
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    onClick: doDelete,
+    style: {
+      background: '#c0392b',
+      color: 'white',
+      border: 'none',
+      padding: '8px 16px',
+      borderRadius: 8,
+      fontSize: 13,
+      fontWeight: 600,
+      cursor: 'pointer'
+    }
+  }, "Delete")))), loading && /*#__PURE__*/React.createElement("div", {
     style: {
       padding: 40,
       textAlign: 'center',
       color: 'var(--text-muted)',
       fontSize: 13
     }
-  }, "Loading..."), weekDates.map((date, dayIdx) => {
+  }, "Loading timesheet..."), weekDates.map((date, dayIdx) => {
     const dayEntries = byDate[date] || [];
     const dayTotal = dayEntries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
     const isToday = date === todayStr;
@@ -6502,8 +6640,8 @@ function WeeklyView({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '10px 16px',
-        background: isToday ? 'rgba(16,35,71,0.04)' : 'var(--surface-muted)',
-        borderBottom: '1px solid var(--border)'
+        background: isToday ? 'rgba(16,35,71,0.05)' : 'var(--surface-muted)',
+        borderBottom: isAddOpen || dayEntries.length > 0 ? '1px solid var(--border)' : 'none'
       }
     }, /*#__PURE__*/React.createElement("div", {
       style: {
@@ -6521,8 +6659,9 @@ function WeeklyView({
       }
     }), /*#__PURE__*/React.createElement("span", {
       style: {
-        fontWeight: 600,
-        fontSize: 14
+        fontWeight: 700,
+        fontSize: 14,
+        color: isToday ? 'var(--accent)' : 'var(--text)'
       }
     }, DAY_NAMES[dayIdx]), /*#__PURE__*/React.createElement("span", {
       style: {
@@ -6539,13 +6678,12 @@ function WeeklyView({
       style: {
         display: 'flex',
         alignItems: 'center',
-        gap: 6
+        gap: 5
       }
     }, /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 11,
-        color: 'var(--text-muted)',
-        whiteSpace: 'nowrap'
+        color: 'var(--text-muted)'
       }
     }, "Lunch:"), /*#__PURE__*/React.createElement("input", {
       type: "number",
@@ -6558,9 +6696,9 @@ function WeeklyView({
         ...inSt,
         width: 60,
         textAlign: 'center',
-        padding: '4px 6px'
+        padding: '3px 6px'
       },
-      title: "Shared lunch break for all entries on this day"
+      title: "Lunch break for all entries on this day"
     }), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 11,
@@ -6569,47 +6707,58 @@ function WeeklyView({
     }, "h")), dayTotal > 0 && /*#__PURE__*/React.createElement("span", {
       style: {
         fontWeight: 700,
-        fontSize: 13,
+        fontSize: 14,
         color: 'var(--accent)',
-        fontVariantNumeric: 'tabular-nums'
+        fontVariantNumeric: 'tabular-nums',
+        minWidth: 52,
+        textAlign: 'right'
       }
     }, dayTotal.toFixed(2), "h"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setShowAddFor(isAddOpen ? null : date),
-      className: "btn btn-sm",
       style: {
-        background: 'var(--brand-navy)',
-        color: 'white',
-        border: 'none',
-        fontSize: 11
+        background: isAddOpen ? 'transparent' : 'var(--brand-navy)',
+        color: isAddOpen ? 'var(--text-muted)' : 'white',
+        border: isAddOpen ? '1px solid var(--border)' : 'none',
+        padding: '5px 12px',
+        borderRadius: 7,
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: 'pointer'
       }
     }, isAddOpen ? 'Cancel' : '+ Add'))), isAddOpen && /*#__PURE__*/React.createElement("div", {
       style: {
         padding: '12px 16px',
         background: 'rgba(16,35,71,0.02)',
-        borderBottom: '1px solid var(--border)'
+        borderBottom: dayEntries.length > 0 ? '1px solid var(--border)' : 'none'
       }
     }, /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr 80px',
+        gridTemplateColumns: '130px 130px 1fr 80px',
         gap: 8,
         marginBottom: 8
       }
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Start time"), /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, {
+      text: "Start time"
+    }), /*#__PURE__*/React.createElement("input", {
       type: "time",
       style: inSt,
       value: draft.start_time,
       onChange: e => setDraft(date, {
         start_time: e.target.value
       })
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "End time"), /*#__PURE__*/React.createElement("input", {
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, {
+      text: "End time"
+    }), /*#__PURE__*/React.createElement("input", {
       type: "time",
       style: inSt,
       value: draft.end_time,
       onChange: e => setDraft(date, {
         end_time: e.target.value
       })
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Project"), /*#__PURE__*/React.createElement("select", {
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, {
+      text: "Project"
+    }), /*#__PURE__*/React.createElement("select", {
       style: inSt,
       value: draft.project,
       onChange: e => setDraft(date, {
@@ -6618,7 +6767,9 @@ function WeeklyView({
     }, projects.map(p => /*#__PURE__*/React.createElement("option", {
       key: p.id,
       value: p.id
-    }, p.name)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Net hours"), /*#__PURE__*/React.createElement("div", {
+    }, p.name)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, {
+      text: "Net hours"
+    }), /*#__PURE__*/React.createElement("div", {
       style: {
         padding: '5px 8px',
         borderRadius: 6,
@@ -6635,7 +6786,9 @@ function WeeklyView({
         gridTemplateColumns: '2fr 1fr auto',
         gap: 8
       }
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Task description"), /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, {
+      text: "Task description"
+    }), /*#__PURE__*/React.createElement("input", {
       type: "text",
       style: inSt,
       value: draft.title,
@@ -6644,7 +6797,9 @@ function WeeklyView({
         title: e.target.value
       }),
       onKeyDown: e => e.key === 'Enter' && saveAdd(date)
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Remarks"), /*#__PURE__*/React.createElement("input", {
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, {
+      text: "Remarks"
+    }), /*#__PURE__*/React.createElement("input", {
       type: "text",
       style: inSt,
       value: draft.remarks || '',
@@ -6664,22 +6819,22 @@ function WeeklyView({
         background: 'var(--brand-navy)',
         color: 'white',
         border: 'none',
-        padding: '7px 16px',
+        padding: '7px 18px',
         borderRadius: 7,
         fontSize: 12,
         fontWeight: 600,
-        cursor: saving === date || !draft.title || addNet <= 0 ? 'not-allowed' : 'pointer',
-        opacity: saving === date || !draft.title || addNet <= 0 ? 0.5 : 1,
-        whiteSpace: 'nowrap'
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        opacity: saving === date || !draft.title || addNet <= 0 ? 0.5 : 1
       }
     }, saving === date ? 'Saving...' : 'Add')))), dayEntries.length === 0 && !isAddOpen && !loading && /*#__PURE__*/React.createElement("div", {
       style: {
-        padding: '12px 16px',
+        padding: '10px 16px',
         color: 'var(--text-muted)',
         fontSize: 12,
         textAlign: 'center'
       }
-    }, "No entries"), dayEntries.length > 0 && /*#__PURE__*/React.createElement("table", {
+    }, "No entries   click \"+ Add\" to log time"), dayEntries.length > 0 && /*#__PURE__*/React.createElement("table", {
       style: {
         width: '100%',
         borderCollapse: 'collapse',
@@ -6688,141 +6843,157 @@ function WeeklyView({
     }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['Start', 'End', 'Net Hrs', 'Project', 'Task', 'Remarks', ''].map(h => /*#__PURE__*/React.createElement("th", {
       key: h,
       style: thSt
-    }, h)))), /*#__PURE__*/React.createElement("tbody", null, dayEntries.map((entry, i) => {
-      const isEd = editingId === entry.id;
+    }, h)))), /*#__PURE__*/React.createElement("tbody", null, dayEntries.map((entry, rowIdx) => {
+      // CRITICAL: only this specific entry.id matches editingId
+      const isEd = editingId !== null && editingId === entry.id;
+      const isTemp = String(entry.id).startsWith('tmp_');
       const proj = projects.find(p => p.id === (entry.project_id || entry.project));
-      const eNet = isEd ? calcNet(editDraft.start_time, editDraft.end_time, getLunch(date)) : 0;
-      return isEd ? /*#__PURE__*/React.createElement("tr", {
+      if (isEd) {
+        const eNet = calcNet(editDraft.start_time, editDraft.end_time, lunch);
+        return /*#__PURE__*/React.createElement("tr", {
+          key: entry.id,
+          style: {
+            borderTop: '1px solid var(--border)',
+            background: 'rgba(201,168,76,0.06)'
+          }
+        }, /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "time",
+          style: inSt,
+          value: editDraft.start_time,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            start_time: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "time",
+          style: inSt,
+          value: editDraft.end_time,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            end_time: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 12px',
+            textAlign: 'center'
+          }
+        }, /*#__PURE__*/React.createElement("div", {
+          style: {
+            fontWeight: 700,
+            color: 'var(--accent)',
+            fontSize: 13
+          }
+        }, eNet.toFixed(2), "h"), /*#__PURE__*/React.createElement("div", {
+          style: {
+            fontSize: 9,
+            color: 'var(--text-muted)',
+            marginTop: 1
+          }
+        }, "-", lunch, "h lunch")), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px'
+          }
+        }, /*#__PURE__*/React.createElement("select", {
+          style: inSt,
+          value: editDraft.project,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            project: e.target.value
+          }))
+        }, projects.map(p => /*#__PURE__*/React.createElement("option", {
+          key: p.id,
+          value: p.id
+        }, p.name)))), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "text",
+          style: inSt,
+          value: editDraft.title,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            title: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "text",
+          style: inSt,
+          value: editDraft.remarks || '',
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            remarks: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px',
+            whiteSpace: 'nowrap'
+          }
+        }, /*#__PURE__*/React.createElement("button", {
+          onClick: () => saveEdit(entry.id, date),
+          style: {
+            background: 'var(--brand-navy)',
+            color: 'white',
+            border: 'none',
+            padding: '5px 12px',
+            borderRadius: 6,
+            fontSize: 11,
+            cursor: 'pointer',
+            marginRight: 4,
+            fontWeight: 600
+          }
+        }, "Save"), /*#__PURE__*/React.createElement("button", {
+          onClick: cancelEdit,
+          style: {
+            background: 'none',
+            border: '1px solid var(--border)',
+            padding: '5px 10px',
+            borderRadius: 6,
+            fontSize: 11,
+            cursor: 'pointer'
+          }
+        }, "Cancel")));
+      }
+      return /*#__PURE__*/React.createElement("tr", {
         key: entry.id,
         style: {
           borderTop: '1px solid var(--border)',
-          background: 'rgba(16,35,71,0.02)'
-        }
-      }, /*#__PURE__*/React.createElement("td", {
-        style: {
-          padding: '6px 8px'
-        }
-      }, /*#__PURE__*/React.createElement("input", {
-        type: "time",
-        style: inSt,
-        value: editDraft.start_time,
-        onChange: e => setEditDraft(d => ({
-          ...d,
-          start_time: e.target.value
-        }))
-      })), /*#__PURE__*/React.createElement("td", {
-        style: {
-          padding: '6px 8px'
-        }
-      }, /*#__PURE__*/React.createElement("input", {
-        type: "time",
-        style: inSt,
-        value: editDraft.end_time,
-        onChange: e => setEditDraft(d => ({
-          ...d,
-          end_time: e.target.value
-        }))
-      })), /*#__PURE__*/React.createElement("td", {
-        style: {
-          padding: '6px 12px',
-          fontWeight: 700,
-          color: 'var(--accent)',
-          textAlign: 'center'
-        }
-      }, eNet.toFixed(2), "h", /*#__PURE__*/React.createElement("div", {
-        style: {
-          fontSize: 9,
-          color: 'var(--text-muted)'
-        }
-      }, "-", getLunch(date), "h lunch")), /*#__PURE__*/React.createElement("td", {
-        style: {
-          padding: '6px 8px'
-        }
-      }, /*#__PURE__*/React.createElement("select", {
-        style: inSt,
-        value: editDraft.project,
-        onChange: e => setEditDraft(d => ({
-          ...d,
-          project: e.target.value
-        }))
-      }, projects.map(p => /*#__PURE__*/React.createElement("option", {
-        key: p.id,
-        value: p.id
-      }, p.name)))), /*#__PURE__*/React.createElement("td", {
-        style: {
-          padding: '6px 8px'
-        }
-      }, /*#__PURE__*/React.createElement("input", {
-        type: "text",
-        style: inSt,
-        value: editDraft.title,
-        onChange: e => setEditDraft(d => ({
-          ...d,
-          title: e.target.value
-        }))
-      })), /*#__PURE__*/React.createElement("td", {
-        style: {
-          padding: '6px 8px'
-        }
-      }, /*#__PURE__*/React.createElement("input", {
-        type: "text",
-        style: inSt,
-        value: editDraft.remarks || '',
-        onChange: e => setEditDraft(d => ({
-          ...d,
-          remarks: e.target.value
-        }))
-      })), /*#__PURE__*/React.createElement("td", {
-        style: {
-          padding: '6px 8px',
-          whiteSpace: 'nowrap'
-        }
-      }, /*#__PURE__*/React.createElement("button", {
-        onClick: () => saveEdit(entry.id, date),
-        style: {
-          background: 'var(--brand-navy)',
-          color: 'white',
-          border: 'none',
-          padding: '4px 10px',
-          borderRadius: 5,
-          fontSize: 11,
-          cursor: 'pointer',
-          marginRight: 4
-        }
-      }, "Save"), /*#__PURE__*/React.createElement("button", {
-        onClick: () => setEditingId(null),
-        style: {
-          background: 'none',
-          border: '1px solid var(--border)',
-          padding: '4px 8px',
-          borderRadius: 5,
-          fontSize: 11,
-          cursor: 'pointer'
-        }
-      }, "X"))) : /*#__PURE__*/React.createElement("tr", {
-        key: entry.id,
-        style: {
-          borderTop: '1px solid var(--border)',
-          background: i % 2 === 0 ? 'transparent' : 'rgba(16,35,71,0.01)'
+          background: rowIdx % 2 === 0 ? 'transparent' : 'rgba(16,35,71,0.01)',
+          opacity: isTemp ? 0.6 : 1
         }
       }, /*#__PURE__*/React.createElement("td", {
         style: {
           padding: '9px 12px',
           fontFamily: 'var(--font-mono)',
-          color: 'var(--text-muted)'
+          color: 'var(--text-muted)',
+          whiteSpace: 'nowrap'
         }
       }, entry.start_time || '08:30'), /*#__PURE__*/React.createElement("td", {
         style: {
           padding: '9px 12px',
           fontFamily: 'var(--font-mono)',
-          color: 'var(--text-muted)'
+          color: 'var(--text-muted)',
+          whiteSpace: 'nowrap'
         }
       }, entry.end_time || '17:30'), /*#__PURE__*/React.createElement("td", {
         style: {
           padding: '9px 12px',
           fontWeight: 700,
           color: 'var(--accent)',
-          textAlign: 'center'
+          textAlign: 'center',
+          fontVariantNumeric: 'tabular-nums',
+          whiteSpace: 'nowrap'
         }
       }, parseFloat(entry.hours || 0).toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
         style: {
@@ -6832,7 +7003,7 @@ function WeeklyView({
       }, proj ? proj.name : entry.project_name || entry.project_id || '-'), /*#__PURE__*/React.createElement("td", {
         style: {
           padding: '9px 12px',
-          maxWidth: 240,
+          maxWidth: 220,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap'
@@ -6852,30 +7023,30 @@ function WeeklyView({
           textAlign: 'right',
           whiteSpace: 'nowrap'
         }
-      }, /*#__PURE__*/React.createElement("button", {
+      }, !isTemp && /*#__PURE__*/React.createElement("button", {
         onClick: () => startEdit(entry),
         style: {
           background: 'none',
           border: '1px solid var(--border)',
-          padding: '3px 9px',
+          padding: '3px 10px',
           borderRadius: 5,
           fontSize: 11,
           cursor: 'pointer',
           marginRight: 4
         }
       }, "Edit"), /*#__PURE__*/React.createElement("button", {
-        onClick: () => removeEntry(entry.id),
+        onClick: () => confirmAndDelete(entry),
         style: {
           background: 'none',
-          border: 'none',
+          border: '1px solid #fca5a5',
+          padding: '3px 8px',
+          borderRadius: 5,
+          fontSize: 11,
           cursor: 'pointer',
-          color: 'var(--text-muted)',
-          padding: '3px 5px'
-        }
-      }, /*#__PURE__*/React.createElement(Icon, {
-        name: "x",
-        size: 12
-      }))));
+          color: '#c0392b'
+        },
+        title: "Delete entry"
+      }, isTemp ? '...' : 'Del')));
     }))));
   }), !loading && /*#__PURE__*/React.createElement("div", {
     style: {
@@ -6901,11 +7072,12 @@ function WeeklyView({
       color: 'var(--brand-navy)',
       fontVariantNumeric: 'tabular-nums'
     }
-  }, grandTotal.toFixed(2), "h ", /*#__PURE__*/React.createElement("span", {
+  }, grandTotal.toFixed(2), "h", /*#__PURE__*/React.createElement("span", {
     style: {
       fontWeight: 400,
       fontSize: 12,
-      color: 'var(--text-muted)'
+      color: 'var(--text-muted)',
+      marginLeft: 6
     }
   }, "/ 45h target"))));
 }
@@ -6998,7 +7170,17 @@ function MonthlyView({
   });
 
   // --- CRUD (FIXED: real id only, no null comparison) ---
-  const removeEntry = async id => {
+  const [confirmDelete, setConfirmDelete] = useStateEmp(null);
+  const confirmAndDelete = entry => {
+    setConfirmDelete({
+      id: entry.id,
+      title: entry.title || 'this entry'
+    });
+  };
+  const doDelete = async () => {
+    if (!confirmDelete) return;
+    const id = confirmDelete.id;
+    setConfirmDelete(null);
     if (!id) return;
     setAllEntries(prev => prev.filter(e => e.id !== id));
     try {
@@ -7109,7 +7291,57 @@ function MonthlyView({
       marginBottom: 3
     }
   }, children);
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  return /*#__PURE__*/React.createElement("div", null, confirmDelete && /*#__PURE__*/React.createElement("div", {
+    className: "modal-backdrop",
+    onClick: () => setConfirmDelete(null)
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "modal-card",
+    onClick: e => e.stopPropagation(),
+    style: {
+      maxWidth: 400,
+      marginTop: 120,
+      background: 'var(--surface)',
+      borderRadius: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '20px 24px 16px'
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      margin: '0 0 8px',
+      fontSize: 15
+    }
+  }, "Delete entry?"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      color: 'var(--text-muted)',
+      lineHeight: 1.5
+    }
+  }, "This will permanently delete ", /*#__PURE__*/React.createElement("strong", null, "\"", confirmDelete.title, "\""), ". This cannot be undone.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '0 24px 20px',
+      display: 'flex',
+      gap: 8,
+      justifyContent: 'flex-end'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => setConfirmDelete(null)
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    onClick: doDelete,
+    style: {
+      background: '#c0392b',
+      color: 'white',
+      border: 'none',
+      padding: '8px 16px',
+      borderRadius: 8,
+      fontSize: 13,
+      fontWeight: 600,
+      cursor: 'pointer'
+    }
+  }, "Delete")))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       alignItems: 'center',
@@ -7456,17 +7688,17 @@ function MonthlyView({
           marginRight: 4
         }
       }, "Edit"), /*#__PURE__*/React.createElement("button", {
-        onClick: () => removeEntry(entry.id),
+        onClick: () => confirmAndDelete(entry),
         style: {
           background: 'none',
-          border: 'none',
+          border: '1px solid #fca5a5',
           cursor: 'pointer',
           color: '#c0392b',
-          padding: '3px 5px',
-          fontSize: 13,
-          fontWeight: 700
+          padding: '3px 8px',
+          borderRadius: 5,
+          fontSize: 11
         }
-      }, "x")));
+      }, "Del")));
     }))), /*#__PURE__*/React.createElement("div", {
       style: {
         background: 'rgba(16,35,71,0.03)',
