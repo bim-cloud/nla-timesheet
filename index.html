@@ -6046,6 +6046,1564 @@ function ProjectsTab({
     }
   }, "Client"))))))))))));
 }
+
+// ============================================================
+// TimesheetHub - unified daily / weekly / monthly view
+// ============================================================
+function TimesheetHub({
+  user,
+  entries,
+  setEntries
+}) {
+  const [view, setView] = useStateEmp('daily'); // daily | weekly | monthly
+  const [weekOffset, setWeekOffset] = useStateEmp(0);
+  const [monthOffset, setMonthOffset] = useStateEmp(0);
+  const [exporting, setExporting] = useStateEmp(null);
+  const [exportDialog, setExportDialog] = useStateEmp(null);
+
+  // -- date helpers ------------------------------------------
+  const getWeekDates = off => {
+    const d = new Date();
+    d.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1) + (off || 0) * 7);
+    return Array.from({
+      length: 5
+    }, (_, i) => {
+      const x = new Date(d);
+      x.setDate(d.getDate() + i);
+      return x.toISOString().split('T')[0];
+    });
+  };
+  const getMonthRange = off => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + (off || 0));
+    return {
+      from: d.toISOString().split('T')[0],
+      to: new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0],
+      label: d.toLocaleDateString('en-GB', {
+        month: 'long',
+        year: 'numeric'
+      })
+    };
+  };
+  const today = new Date().toISOString().split('T')[0];
+  const weekDates = getWeekDates(weekOffset);
+  const monthRange = getMonthRange(monthOffset);
+  const weekLabel = (() => {
+    const s = new Date(weekDates[0] + 'T00:00:00'),
+      e = new Date(weekDates[4] + 'T00:00:00');
+    const pre = weekOffset === 0 ? 'This week' : weekOffset === -1 ? 'Last week' : Math.abs(weekOffset) + ' weeks ago';
+    return pre + ' - ' + s.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short'
+    }) + ' - ' + e.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  })();
+
+  // -- exports -----------------------------------------------
+  const doExport = async type => {
+    setExporting(type);
+    try {
+      if (type === 'daily-pdf') (await window.exportDailyPDF) && window.exportDailyPDF(user, today);
+      if (type === 'daily-excel') (await window.exportDailyExcel) && window.exportDailyExcel(user, today);
+      if (type === 'week-pdf') (await window.exportToPDF) && window.exportToPDF(user, weekOffset);
+      if (type === 'week-excel') (await window.exportToExcel) && window.exportToExcel(user, weekOffset);
+      if (type === 'month-pdf') (await window.exportEmployeeLogSheet) && window.exportEmployeeLogSheet(user, monthOffset, 'pdf');
+      if (type === 'month-excel') (await window.exportEmployeeLogSheet) && window.exportEmployeeLogSheet(user, monthOffset);
+    } catch (e) {
+      console.error(e);
+      alert('Export failed: ' + e.message);
+    }
+    setExporting(null);
+  };
+  const btnStyle = active => ({
+    padding: '6px 16px',
+    borderRadius: 20,
+    border: '1px solid',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 500,
+    transition: 'all 0.1s',
+    background: active ? 'var(--brand-navy)' : 'transparent',
+    color: active ? 'white' : 'var(--text-muted)',
+    borderColor: active ? 'var(--brand-navy)' : 'var(--border)'
+  });
+  const exportBtns = {
+    daily: [['daily-excel', 'Excel'], ['daily-pdf', 'PDF']],
+    weekly: [['week-excel', 'Excel'], ['week-pdf', 'PDF']],
+    monthly: [['month-excel', 'Excel'], ['month-pdf', 'PDF']]
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 16,
+      flexWrap: 'wrap',
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      margin: 0,
+      fontSize: 18,
+      fontWeight: 600
+    }
+  }, "My Timesheet"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: 'var(--text-muted)',
+      marginTop: 3
+    }
+  }, view === 'daily' && today, view === 'weekly' && weekLabel, view === 'monthly' && monthRange.label)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      background: 'var(--surface-muted)',
+      borderRadius: 8,
+      padding: 2,
+      gap: 2
+    }
+  }, [['daily', 'Day'], ['weekly', 'Week'], ['monthly', 'Month']].map(([v, l]) => /*#__PURE__*/React.createElement("button", {
+    key: v,
+    onClick: () => setView(v),
+    style: btnStyle(view === v)
+  }, l))), view === 'weekly' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm",
+    onClick: () => setWeekOffset(w => w - 1)
+  }, "\u2190"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm",
+    style: {
+      fontSize: 11
+    },
+    onClick: () => setWeekOffset(0),
+    disabled: weekOffset === 0
+  }, "This week"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm",
+    onClick: () => setWeekOffset(w => w + 1),
+    disabled: weekOffset >= 0
+  }, "\u2192")), view === 'monthly' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm",
+    onClick: () => setMonthOffset(m => m - 1)
+  }, "\u2190"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm",
+    style: {
+      fontSize: 11
+    },
+    onClick: () => setMonthOffset(0),
+    disabled: monthOffset === 0
+  }, "This month"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm",
+    onClick: () => setMonthOffset(m => m + 1),
+    disabled: monthOffset >= 0
+  }, "\u2192")), exportBtns[view].map(([type, label]) => /*#__PURE__*/React.createElement("button", {
+    key: type,
+    className: "btn btn-sm",
+    disabled: !!exporting,
+    onClick: () => doExport(type),
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 4,
+      color: type.includes('pdf') ? '#c0392b' : 'var(--text)',
+      borderColor: type.includes('pdf') ? '#c0392b' : 'var(--border)'
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "download",
+    size: 12
+  }), exporting === type ? '...' : type.includes('pdf') ? 'PDF' : 'Excel')))), view === 'daily' && /*#__PURE__*/React.createElement(DailyView, {
+    user: user,
+    entries: entries,
+    setEntries: setEntries,
+    date: today
+  }), view === 'weekly' && /*#__PURE__*/React.createElement(WeeklyView, {
+    user: user,
+    weekDates: weekDates,
+    weekOffset: weekOffset
+  }), view === 'monthly' && /*#__PURE__*/React.createElement(MonthlyView, {
+    user: user,
+    monthRange: monthRange,
+    monthOffset: monthOffset
+  }));
+}
+
+// ============================================================
+// Daily View - full entry form + list
+// ============================================================
+function DailyView({
+  user,
+  entries,
+  setEntries,
+  date
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "col-8-4"
+  }, /*#__PURE__*/React.createElement(TodayEntries, {
+    entries: entries,
+    setEntries: setEntries,
+    userId: user?.id
+  }), /*#__PURE__*/React.createElement(WeekBars, {
+    user: user
+  }));
+}
+
+// ============================================================
+// Weekly View - editable grid with all entry fields
+// ============================================================
+function WeeklyView({
+  user,
+  weekDates,
+  weekOffset
+}) {
+  const [weekEntries, setWeekEntries] = useStateEmp([]);
+  const [loading, setLoading] = useStateEmp(true);
+  const [editingId, setEditingId] = useStateEmp(null);
+  const [editDraft, setEditDraft] = useStateEmp({});
+  const [showAddFor, setShowAddFor] = useStateEmp(null); // date string
+  const [addDraft, setAddDraft] = useStateEmp({
+    start_time: '08:30',
+    end_time: '17:30',
+    lunch_break: '1.00',
+    project: '',
+    title: '',
+    remarks: ''
+  });
+  const [saving, setSaving] = useStateEmp(false);
+  const calcNet = (start, end, lunch) => {
+    if (!start || !end) return 0;
+    const toH = t => {
+      const [h, m] = t.split(':').map(Number);
+      return h + (m || 0) / 60;
+    };
+    return Math.round(Math.max(0, toH(end) - toH(start) - parseFloat(lunch || 0)) * 100) / 100;
+  };
+  useEffectEmp(() => {
+    if (!user) return;
+    setLoading(true);
+    window.SupaEntries.teamSummary(weekDates[0], weekDates[4]).then(all => {
+      setWeekEntries(all.filter(e => e.user_id === user.id));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [user?.id, weekDates[0]]);
+  const byDate = {};
+  weekDates.forEach(d => {
+    byDate[d] = [];
+  });
+  weekEntries.forEach(e => {
+    if (byDate[e.date]) byDate[e.date].push(e);
+  });
+  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const removeEntry = async id => {
+    setWeekEntries(prev => prev.filter(e => e.id !== id));
+    await window.SupaEntries.remove(id);
+  };
+  const saveAdd = async date => {
+    const net = calcNet(addDraft.start_time, addDraft.end_time, addDraft.lunch_break);
+    if (!addDraft.title || net <= 0) return;
+    setSaving(date);
+    const saved = await window.SupaEntries.add(user.id, {
+      project: addDraft.project || (window.DATA.PROJECTS || [])[0]?.id || '',
+      type: 'design',
+      title: addDraft.title,
+      notes: addDraft.remarks || '',
+      hours: net,
+      date,
+      start_time: addDraft.start_time,
+      end_time: addDraft.end_time,
+      lunch_break: parseFloat(addDraft.lunch_break || 0)
+    });
+    if (saved) setWeekEntries(prev => [...prev, {
+      ...saved,
+      user_id: user.id,
+      date,
+      hours: net,
+      project_id: addDraft.project,
+      project_name: (window.DATA.PROJECTS || []).find(p => p.id === addDraft.project)?.name || addDraft.project,
+      title: addDraft.title,
+      notes: addDraft.remarks || '',
+      start_time: addDraft.start_time,
+      end_time: addDraft.end_time,
+      lunch_break: parseFloat(addDraft.lunch_break || 0)
+    }]);
+    setShowAddFor(null);
+    setAddDraft({
+      start_time: '08:30',
+      end_time: '17:30',
+      lunch_break: '1.00',
+      project: '',
+      title: '',
+      remarks: ''
+    });
+    setSaving(null);
+  };
+  const startEdit = e => {
+    setEditingId(e.id);
+    setEditDraft({
+      start_time: e.start_time || '08:30',
+      end_time: e.end_time || '17:30',
+      lunch_break: String(e.lunch_break || '1.00'),
+      project: e.project_id || e.project || '',
+      title: e.title || '',
+      remarks: e.notes || ''
+    });
+  };
+  const saveEdit = async id => {
+    const net = calcNet(editDraft.start_time, editDraft.end_time, editDraft.lunch_break);
+    try {
+      await window.sb.from('entries').update({
+        hours: net,
+        title: editDraft.title,
+        notes: editDraft.remarks,
+        start_time: editDraft.start_time,
+        end_time: editDraft.end_time,
+        lunch_break: parseFloat(editDraft.lunch_break || 0)
+      }).eq('id', id);
+    } catch (e) {}
+    setWeekEntries(prev => prev.map(e => e.id === id ? {
+      ...e,
+      hours: net,
+      title: editDraft.title,
+      notes: editDraft.remarks,
+      start_time: editDraft.start_time,
+      end_time: editDraft.end_time,
+      lunch_break: parseFloat(editDraft.lunch_break || 0)
+    } : e));
+    setEditingId(null);
+  };
+  const grandTotal = weekEntries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
+  const projects = window.DATA.PROJECTS || [];
+  const inStyle = {
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    padding: '5px 8px',
+    fontSize: 12,
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    fontFamily: 'inherit',
+    width: '100%'
+  };
+  const th = (label, center) => /*#__PURE__*/React.createElement("th", {
+    key: label,
+    style: {
+      padding: '10px 12px',
+      fontSize: 10,
+      fontWeight: 700,
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
+      color: 'var(--text-muted)',
+      textAlign: center ? 'center' : 'left',
+      background: 'var(--surface-muted)',
+      borderBottom: '2px solid var(--border)',
+      whiteSpace: 'nowrap'
+    }
+  }, label);
+  return /*#__PURE__*/React.createElement("div", null, weekDates.map((date, dayIdx) => {
+    const dayEntries = byDate[date] || [];
+    const dayTotal = dayEntries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
+    const isToday = date === new Date().toISOString().split('T')[0];
+    const addNet = calcNet(addDraft.start_time, addDraft.end_time, addDraft.lunch_break);
+    return /*#__PURE__*/React.createElement("div", {
+      key: date,
+      style: {
+        marginBottom: 12,
+        borderRadius: 12,
+        border: '1px solid var(--border)',
+        overflow: 'hidden',
+        background: 'var(--surface)'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '10px 16px',
+        background: isToday ? 'rgba(16,35,71,0.04)' : 'var(--surface-muted)',
+        borderBottom: '1px solid var(--border)'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10
+      }
+    }, isToday && /*#__PURE__*/React.createElement("span", {
+      style: {
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        background: 'var(--accent)',
+        display: 'inline-block'
+      }
+    }), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontWeight: 600,
+        fontSize: 14
+      }
+    }, dayNames[dayIdx]), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 12,
+        color: 'var(--text-muted)'
+      }
+    }, new Date(date + 'T00:00:00').toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short'
+    }))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8
+      }
+    }, dayTotal > 0 && /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontWeight: 700,
+        fontSize: 13,
+        color: 'var(--accent)'
+      }
+    }, dayTotal.toFixed(2), "h"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setShowAddFor(showAddFor === date ? null : date),
+      className: "btn btn-sm",
+      style: {
+        background: 'var(--brand-navy)',
+        color: 'white',
+        border: 'none',
+        fontSize: 11
+      }
+    }, "+ Add entry"))), showAddFor === date && /*#__PURE__*/React.createElement("div", {
+      style: {
+        padding: '12px 16px',
+        background: 'rgba(16,35,71,0.02)',
+        borderBottom: '1px solid var(--border)'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr 1fr 1fr 90px',
+        gap: 8,
+        marginBottom: 8
+      }
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 10,
+        fontWeight: 600,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 3
+      }
+    }, "START"), /*#__PURE__*/React.createElement("input", {
+      type: "time",
+      style: inStyle,
+      value: addDraft.start_time,
+      onChange: e => setAddDraft(d => ({
+        ...d,
+        start_time: e.target.value
+      }))
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 10,
+        fontWeight: 600,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 3
+      }
+    }, "END"), /*#__PURE__*/React.createElement("input", {
+      type: "time",
+      style: inStyle,
+      value: addDraft.end_time,
+      onChange: e => setAddDraft(d => ({
+        ...d,
+        end_time: e.target.value
+      }))
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 10,
+        fontWeight: 600,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 3
+      }
+    }, "LUNCH (hrs)"), /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      step: "0.25",
+      min: "0",
+      max: "3",
+      style: inStyle,
+      value: addDraft.lunch_break,
+      onChange: e => setAddDraft(d => ({
+        ...d,
+        lunch_break: e.target.value
+      }))
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 10,
+        fontWeight: 600,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 3
+      }
+    }, "PROJECT"), /*#__PURE__*/React.createElement("select", {
+      style: inStyle,
+      value: addDraft.project,
+      onChange: e => setAddDraft(d => ({
+        ...d,
+        project: e.target.value
+      }))
+    }, projects.map(p => /*#__PURE__*/React.createElement("option", {
+      key: p.id,
+      value: p.id
+    }, p.name)))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'flex-end'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        padding: '5px 10px',
+        borderRadius: 6,
+        background: addNet > 0 ? 'rgba(16,35,71,0.08)' : 'var(--surface-muted)',
+        fontWeight: 700,
+        fontSize: 13,
+        color: addNet > 0 ? 'var(--brand-navy)' : 'var(--text-muted)',
+        textAlign: 'center',
+        width: '100%',
+        border: '1px solid var(--border)'
+      }
+    }, addNet > 0 ? addNet.toFixed(2) + 'h' : '--'))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: '2fr 1fr auto',
+        gap: 8
+      }
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 10,
+        fontWeight: 600,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 3
+      }
+    }, "TASK DESCRIPTION"), /*#__PURE__*/React.createElement("input", {
+      type: "text",
+      style: inStyle,
+      value: addDraft.title,
+      placeholder: "What did you work on?",
+      onChange: e => setAddDraft(d => ({
+        ...d,
+        title: e.target.value
+      }))
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 10,
+        fontWeight: 600,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 3
+      }
+    }, "REMARKS"), /*#__PURE__*/React.createElement("input", {
+      type: "text",
+      style: inStyle,
+      value: addDraft.remarks,
+      placeholder: "Optional...",
+      onChange: e => setAddDraft(d => ({
+        ...d,
+        remarks: e.target.value
+      }))
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'flex-end',
+        gap: 6
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => saveAdd(date),
+      disabled: !!saving || !addDraft.title || addNet <= 0,
+      style: {
+        background: 'var(--brand-navy)',
+        color: 'white',
+        border: 'none',
+        padding: '7px 16px',
+        borderRadius: 7,
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap'
+      }
+    }, saving === date ? 'Saving...' : 'Add'), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setShowAddFor(null),
+      style: {
+        background: 'none',
+        border: '1px solid var(--border)',
+        padding: '7px 12px',
+        borderRadius: 7,
+        fontSize: 12,
+        cursor: 'pointer'
+      }
+    }, "Cancel")))), dayEntries.length === 0 && showAddFor !== date && /*#__PURE__*/React.createElement("div", {
+      style: {
+        padding: '14px 16px',
+        color: 'var(--text-muted)',
+        fontSize: 12,
+        textAlign: 'center'
+      }
+    }, "No entries   click \"+ Add entry\" above"), dayEntries.length > 0 && /*#__PURE__*/React.createElement("table", {
+      style: {
+        width: '100%',
+        borderCollapse: 'collapse',
+        fontSize: 12
+      }
+    }, dayIdx === 0 && /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, th('Start', true), th('End', true), th('Lunch', true), th('Net Hrs', true), th('Project'), th('Task Description'), th('Remarks'), th(''))), /*#__PURE__*/React.createElement("tbody", null, dayEntries.map((entry, i) => {
+      const isEd = editingId === entry.id;
+      const proj = projects.find(p => p.id === (entry.project_id || entry.project));
+      if (isEd) {
+        const eNet = calcNet(editDraft.start_time, editDraft.end_time, editDraft.lunch_break);
+        return /*#__PURE__*/React.createElement("tr", {
+          key: entry.id,
+          style: {
+            borderTop: '1px solid var(--border)',
+            background: 'rgba(16,35,71,0.02)'
+          }
+        }, /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "time",
+          style: inStyle,
+          value: editDraft.start_time,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            start_time: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "time",
+          style: inStyle,
+          value: editDraft.end_time,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            end_time: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "number",
+          step: "0.25",
+          min: "0",
+          style: {
+            ...inStyle,
+            width: 65,
+            textAlign: 'center'
+          },
+          value: editDraft.lunch_break,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            lunch_break: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px',
+            textAlign: 'center',
+            fontWeight: 700,
+            color: 'var(--accent)'
+          }
+        }, eNet.toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px'
+          }
+        }, /*#__PURE__*/React.createElement("select", {
+          style: inStyle,
+          value: editDraft.project,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            project: e.target.value
+          }))
+        }, projects.map(p => /*#__PURE__*/React.createElement("option", {
+          key: p.id,
+          value: p.id
+        }, p.name)))), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "text",
+          style: inStyle,
+          value: editDraft.title,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            title: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "text",
+          style: inStyle,
+          value: editDraft.remarks,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            remarks: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '6px 8px',
+            whiteSpace: 'nowrap'
+          }
+        }, /*#__PURE__*/React.createElement("button", {
+          onClick: () => saveEdit(entry.id),
+          style: {
+            background: 'var(--brand-navy)',
+            color: 'white',
+            border: 'none',
+            padding: '4px 10px',
+            borderRadius: 5,
+            fontSize: 11,
+            cursor: 'pointer',
+            marginRight: 4
+          }
+        }, "Save"), /*#__PURE__*/React.createElement("button", {
+          onClick: () => setEditingId(null),
+          style: {
+            background: 'none',
+            border: '1px solid var(--border)',
+            padding: '4px 8px',
+            borderRadius: 5,
+            fontSize: 11,
+            cursor: 'pointer'
+          }
+        }, "X")));
+      }
+      return /*#__PURE__*/React.createElement("tr", {
+        key: entry.id,
+        style: {
+          borderTop: '1px solid var(--border)',
+          background: i % 2 === 0 ? 'transparent' : 'rgba(16,35,71,0.01)'
+        }
+      }, /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '9px 12px',
+          textAlign: 'center',
+          fontFamily: 'var(--font-mono)',
+          color: 'var(--text-muted)'
+        }
+      }, entry.start_time || '08:30'), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '9px 12px',
+          textAlign: 'center',
+          fontFamily: 'var(--font-mono)',
+          color: 'var(--text-muted)'
+        }
+      }, entry.end_time || '17:30'), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '9px 12px',
+          textAlign: 'center',
+          color: 'var(--text-muted)'
+        }
+      }, parseFloat(entry.lunch_break || 1).toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '9px 12px',
+          textAlign: 'center',
+          fontWeight: 700,
+          color: 'var(--accent)'
+        }
+      }, parseFloat(entry.hours || 0).toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '9px 12px'
+        }
+      }, /*#__PURE__*/React.createElement("div", {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6
+        }
+      }, /*#__PURE__*/React.createElement("div", {
+        style: {
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background: proj?.color || 'var(--brand-navy)',
+          flexShrink: 0
+        }
+      }), /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontWeight: 500,
+          color: 'var(--text)'
+        }
+      }, proj?.name || entry.project_name || entry.project_id || '-'))), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '9px 12px',
+          color: 'var(--text)',
+          maxWidth: 240,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }
+      }, entry.title), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '9px 12px',
+          color: 'var(--text-muted)',
+          maxWidth: 120,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }
+      }, entry.notes || ''), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '9px 8px',
+          textAlign: 'right',
+          whiteSpace: 'nowrap'
+        }
+      }, /*#__PURE__*/React.createElement("button", {
+        onClick: () => startEdit(entry),
+        style: {
+          background: 'none',
+          border: '1px solid var(--border)',
+          padding: '3px 9px',
+          borderRadius: 5,
+          fontSize: 11,
+          cursor: 'pointer',
+          marginRight: 4
+        }
+      }, "Edit"), /*#__PURE__*/React.createElement("button", {
+        onClick: () => removeEntry(entry.id),
+        style: {
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--text-muted)',
+          padding: '3px 5px'
+        }
+      }, /*#__PURE__*/React.createElement(Icon, {
+        name: "x",
+        size: 12
+      }))));
+    }))));
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'var(--surface)',
+      borderRadius: 10,
+      border: '2px solid var(--brand-navy)',
+      padding: '12px 20px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 600,
+      fontSize: 13,
+      color: 'var(--brand-navy)'
+    }
+  }, "Week Total"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 800,
+      fontSize: 18,
+      color: 'var(--brand-navy)',
+      fontVariantNumeric: 'tabular-nums'
+    }
+  }, grandTotal.toFixed(2), "h ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 400,
+      fontSize: 12,
+      color: 'var(--text-muted)'
+    }
+  }, "/ 45h target"))));
+}
+
+// ============================================================
+// Monthly View - calendar-style with entry fields per day
+// ============================================================
+function MonthlyView({
+  user,
+  monthRange,
+  monthOffset
+}) {
+  const [allEntries, setAllEntries] = useStateEmp([]);
+  const [loading, setLoading] = useStateEmp(true);
+  const [expandedDay, setExpandedDay] = useStateEmp(null);
+  const [addDraft, setAddDraft] = useStateEmp({
+    start_time: '08:30',
+    end_time: '17:30',
+    lunch_break: '1.00',
+    project: '',
+    title: '',
+    remarks: ''
+  });
+  const [saving, setSaving] = useStateEmp(false);
+  const [editingId, setEditingId] = useStateEmp(null);
+  const [editDraft, setEditDraft] = useStateEmp({});
+  const calcNet = (start, end, lunch) => {
+    if (!start || !end) return 0;
+    const toH = t => {
+      const [h, m] = t.split(':').map(Number);
+      return h + (m || 0) / 60;
+    };
+    return Math.round(Math.max(0, toH(end) - toH(start) - parseFloat(lunch || 0)) * 100) / 100;
+  };
+  useEffectEmp(() => {
+    if (!user) return;
+    setLoading(true);
+    window.SupaEntries.teamSummary(monthRange.from, monthRange.to).then(all => {
+      setAllEntries(all.filter(e => e.user_id === user.id));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [user?.id, monthRange.from]);
+  const byDate = {};
+  allEntries.forEach(e => {
+    if (!byDate[e.date]) byDate[e.date] = [];
+    byDate[e.date].push(e);
+  });
+  const d = new Date(monthRange.from + 'T00:00:00');
+  const year = d.getFullYear(),
+    month = d.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const today = new Date().toISOString().split('T')[0];
+  const projects = window.DATA.PROJECTS || [];
+  const monthTotal = allEntries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
+  const removeEntry = async id => {
+    setAllEntries(prev => prev.filter(e => e.id !== id));
+    await window.SupaEntries.remove(id);
+  };
+  const startEdit = e => {
+    setEditingId(e.id);
+    setEditDraft({
+      start_time: e.start_time || '08:30',
+      end_time: e.end_time || '17:30',
+      lunch_break: String(e.lunch_break || '1.00'),
+      project: e.project_id || e.project || '',
+      title: e.title || '',
+      remarks: e.notes || ''
+    });
+  };
+  const saveEdit = async id => {
+    const net = calcNet(editDraft.start_time, editDraft.end_time, editDraft.lunch_break);
+    try {
+      await window.sb.from('entries').update({
+        hours: net,
+        title: editDraft.title,
+        notes: editDraft.remarks,
+        start_time: editDraft.start_time,
+        end_time: editDraft.end_time,
+        lunch_break: parseFloat(editDraft.lunch_break || 0)
+      }).eq('id', id);
+    } catch (e) {}
+    setAllEntries(prev => prev.map(e => e.id === id ? {
+      ...e,
+      hours: net,
+      title: editDraft.title,
+      notes: editDraft.remarks,
+      start_time: editDraft.start_time,
+      end_time: editDraft.end_time,
+      lunch_break: parseFloat(editDraft.lunch_break || 0)
+    } : e));
+    setEditingId(null);
+  };
+  const saveAdd = async date => {
+    const net = calcNet(addDraft.start_time, addDraft.end_time, addDraft.lunch_break);
+    if (!addDraft.title || net <= 0) return;
+    setSaving(date);
+    const pid = addDraft.project || projects[0]?.id || '';
+    const saved = await window.SupaEntries.add(user.id, {
+      project: pid,
+      type: 'design',
+      title: addDraft.title,
+      notes: addDraft.remarks || '',
+      hours: net,
+      date,
+      start_time: addDraft.start_time,
+      end_time: addDraft.end_time,
+      lunch_break: parseFloat(addDraft.lunch_break || 0)
+    });
+    if (saved) setAllEntries(prev => [...prev, {
+      ...saved,
+      user_id: user.id,
+      date,
+      hours: net,
+      project_id: pid,
+      project_name: projects.find(p => p.id === pid)?.name || pid,
+      title: addDraft.title,
+      notes: addDraft.remarks || '',
+      start_time: addDraft.start_time,
+      end_time: addDraft.end_time,
+      lunch_break: parseFloat(addDraft.lunch_break || 0)
+    }]);
+    setAddDraft({
+      start_time: '08:30',
+      end_time: '17:30',
+      lunch_break: '1.00',
+      project: '',
+      title: '',
+      remarks: ''
+    });
+    setSaving(null);
+  };
+  const inStyle = {
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    padding: '5px 8px',
+    fontSize: 12,
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    fontFamily: 'inherit',
+    width: '100%'
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      background: 'var(--surface)',
+      borderRadius: 10,
+      border: '1px solid var(--border)',
+      padding: '12px 18px',
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 600,
+      fontSize: 13
+    }
+  }, monthRange.label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 20
+    }
+  }, [['Days logged', Object.keys(byDate).length], ['Total hours', monthTotal.toFixed(1) + 'h'], ['Entries', allEntries.length]].map(([l, v]) => /*#__PURE__*/React.createElement("div", {
+    key: l,
+    style: {
+      textAlign: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 16,
+      fontWeight: 700,
+      color: 'var(--accent)'
+    }
+  }, v), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: 'var(--text-muted)',
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em'
+    }
+  }, l))))), loading ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: 40,
+      textAlign: 'center',
+      color: 'var(--text-muted)'
+    }
+  }, "Loading...") : Array.from({
+    length: daysInMonth
+  }, (_, i) => {
+    const dt = new Date(year, month, i + 1);
+    const dStr = dt.toISOString().split('T')[0];
+    const dow = dt.getDay();
+    const isWeekend = dow === 5 || dow === 6;
+    const isToday = dStr === today;
+    const dayEnt = byDate[dStr] || [];
+    const dayTotal = dayEnt.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
+    const isExpanded = expandedDay === dStr;
+    const addNet = calcNet(addDraft.start_time, addDraft.end_time, addDraft.lunch_break);
+    return /*#__PURE__*/React.createElement("div", {
+      key: dStr,
+      style: {
+        marginBottom: 6,
+        borderRadius: 10,
+        border: '1px solid var(--border)',
+        overflow: 'hidden',
+        background: isWeekend && dayEnt.length === 0 ? 'rgba(0,0,0,0.02)' : 'var(--surface)',
+        opacity: isWeekend && dayEnt.length === 0 ? 0.6 : 1
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: '40px 90px 1fr auto',
+        alignItems: 'center',
+        padding: '8px 14px',
+        background: isToday ? 'rgba(16,35,71,0.04)' : isWeekend ? 'rgba(0,0,0,0.02)' : 'transparent',
+        borderBottom: isExpanded ? '1px solid var(--border)' : 'none',
+        cursor: 'pointer'
+      },
+      onClick: () => setExpandedDay(isExpanded ? null : dStr)
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontWeight: 700,
+        fontSize: 15,
+        color: isToday ? 'var(--accent)' : isWeekend ? 'var(--text-muted)' : 'var(--text)'
+      }
+    }, ('0' + (i + 1)).slice(-2)), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: 'var(--text-muted)'
+      }
+    }, DAYS[dow], isWeekend && ' - Off', isToday && ' - Today'), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 6,
+        flexWrap: 'wrap'
+      }
+    }, dayEnt.map(e => {
+      const proj = projects.find(p => p.id === (e.project_id || e.project));
+      return /*#__PURE__*/React.createElement("span", {
+        key: e.id,
+        style: {
+          fontSize: 10,
+          padding: '2px 7px',
+          borderRadius: 20,
+          background: 'rgba(16,35,71,0.08)',
+          color: 'var(--brand-navy)',
+          fontWeight: 500
+        }
+      }, proj?.code || e.project_name || e.project_id, " ", parseFloat(e.hours || 0).toFixed(1), "h");
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8
+      }
+    }, dayTotal > 0 && /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontWeight: 700,
+        fontSize: 13,
+        color: 'var(--accent)'
+      }
+    }, dayTotal.toFixed(2), "h"), isWeekend && dayEnt.length === 0 && /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10,
+        color: 'var(--text-muted)'
+      }
+    }, "WEEK OFF"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: 'var(--text-muted)',
+        fontSize: 12
+      }
+    }, isExpanded ? ' ' : ' '))), isExpanded && /*#__PURE__*/React.createElement("div", {
+      style: {
+        padding: '12px 14px'
+      }
+    }, dayEnt.length > 0 && /*#__PURE__*/React.createElement("table", {
+      style: {
+        width: '100%',
+        borderCollapse: 'collapse',
+        fontSize: 12,
+        marginBottom: 10
+      }
+    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
+      style: {
+        background: 'var(--surface-muted)'
+      }
+    }, ['Start', 'End', 'Lunch', 'Net Hrs', 'Project', 'Task', 'Remarks', ''].map(h => /*#__PURE__*/React.createElement("th", {
+      key: h,
+      style: {
+        padding: '6px 10px',
+        fontSize: 9,
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: '0.06em',
+        color: 'var(--text-muted)',
+        textAlign: 'left'
+      }
+    }, h)))), /*#__PURE__*/React.createElement("tbody", null, dayEnt.map(entry => {
+      const isEd = editingId === entry.id;
+      const proj = projects.find(p => p.id === (entry.project_id || entry.project));
+      if (isEd) {
+        const eNet = calcNet(editDraft.start_time, editDraft.end_time, editDraft.lunch_break);
+        return /*#__PURE__*/React.createElement("tr", {
+          key: entry.id,
+          style: {
+            borderTop: '1px solid var(--border)',
+            background: 'rgba(16,35,71,0.02)'
+          }
+        }, /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '5px 6px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "time",
+          style: inStyle,
+          value: editDraft.start_time,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            start_time: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '5px 6px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "time",
+          style: inStyle,
+          value: editDraft.end_time,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            end_time: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '5px 6px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "number",
+          step: "0.25",
+          min: "0",
+          style: {
+            ...inStyle,
+            width: 55
+          },
+          value: editDraft.lunch_break,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            lunch_break: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '5px 6px',
+            fontWeight: 700,
+            color: 'var(--accent)'
+          }
+        }, eNet.toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '5px 6px'
+          }
+        }, /*#__PURE__*/React.createElement("select", {
+          style: inStyle,
+          value: editDraft.project,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            project: e.target.value
+          }))
+        }, projects.map(p => /*#__PURE__*/React.createElement("option", {
+          key: p.id,
+          value: p.id
+        }, p.name)))), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '5px 6px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "text",
+          style: inStyle,
+          value: editDraft.title,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            title: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '5px 6px'
+          }
+        }, /*#__PURE__*/React.createElement("input", {
+          type: "text",
+          style: inStyle,
+          value: editDraft.remarks,
+          onChange: e => setEditDraft(d => ({
+            ...d,
+            remarks: e.target.value
+          }))
+        })), /*#__PURE__*/React.createElement("td", {
+          style: {
+            padding: '5px 6px',
+            whiteSpace: 'nowrap'
+          }
+        }, /*#__PURE__*/React.createElement("button", {
+          onClick: () => saveEdit(entry.id),
+          style: {
+            background: 'var(--brand-navy)',
+            color: 'white',
+            border: 'none',
+            padding: '4px 10px',
+            borderRadius: 5,
+            fontSize: 11,
+            cursor: 'pointer',
+            marginRight: 4
+          }
+        }, "Save"), /*#__PURE__*/React.createElement("button", {
+          onClick: () => setEditingId(null),
+          style: {
+            background: 'none',
+            border: '1px solid var(--border)',
+            padding: '4px 8px',
+            borderRadius: 5,
+            fontSize: 11,
+            cursor: 'pointer'
+          }
+        }, "X")));
+      }
+      return /*#__PURE__*/React.createElement("tr", {
+        key: entry.id,
+        style: {
+          borderTop: '1px solid var(--border)'
+        }
+      }, /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '7px 10px',
+          fontFamily: 'var(--font-mono)',
+          color: 'var(--text-muted)'
+        }
+      }, entry.start_time || '08:30'), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '7px 10px',
+          fontFamily: 'var(--font-mono)',
+          color: 'var(--text-muted)'
+        }
+      }, entry.end_time || '17:30'), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '7px 10px',
+          color: 'var(--text-muted)'
+        }
+      }, parseFloat(entry.lunch_break || 1).toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '7px 10px',
+          fontWeight: 700,
+          color: 'var(--accent)'
+        }
+      }, parseFloat(entry.hours || 0).toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '7px 10px',
+          fontWeight: 500
+        }
+      }, proj?.name || entry.project_name || entry.project_id || '-'), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '7px 10px',
+          maxWidth: 200,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }
+      }, entry.title), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '7px 10px',
+          color: 'var(--text-muted)',
+          maxWidth: 120,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }
+      }, entry.notes || ''), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '7px 6px',
+          whiteSpace: 'nowrap'
+        }
+      }, /*#__PURE__*/React.createElement("button", {
+        onClick: () => startEdit(entry),
+        style: {
+          background: 'none',
+          border: '1px solid var(--border)',
+          padding: '3px 8px',
+          borderRadius: 5,
+          fontSize: 11,
+          cursor: 'pointer',
+          marginRight: 4
+        }
+      }, "Edit"), /*#__PURE__*/React.createElement("button", {
+        onClick: () => removeEntry(entry.id),
+        style: {
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--text-muted)'
+        }
+      }, /*#__PURE__*/React.createElement(Icon, {
+        name: "x",
+        size: 11
+      }))));
+    }))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: 'rgba(16,35,71,0.03)',
+        borderRadius: 8,
+        padding: '10px 12px',
+        border: '1px dashed var(--border)'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr 1fr 1fr 70px',
+        gap: 8,
+        marginBottom: 8
+      }
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 9,
+        fontWeight: 700,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 3
+      }
+    }, "START"), /*#__PURE__*/React.createElement("input", {
+      type: "time",
+      style: inStyle,
+      value: addDraft.start_time,
+      onChange: e => setAddDraft(d => ({
+        ...d,
+        start_time: e.target.value
+      }))
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 9,
+        fontWeight: 700,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 3
+      }
+    }, "END"), /*#__PURE__*/React.createElement("input", {
+      type: "time",
+      style: inStyle,
+      value: addDraft.end_time,
+      onChange: e => setAddDraft(d => ({
+        ...d,
+        end_time: e.target.value
+      }))
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 9,
+        fontWeight: 700,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 3
+      }
+    }, "LUNCH (hrs)"), /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      step: "0.25",
+      min: "0",
+      style: inStyle,
+      value: addDraft.lunch_break,
+      onChange: e => setAddDraft(d => ({
+        ...d,
+        lunch_break: e.target.value
+      }))
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 9,
+        fontWeight: 700,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 3
+      }
+    }, "PROJECT"), /*#__PURE__*/React.createElement("select", {
+      style: inStyle,
+      value: addDraft.project,
+      onChange: e => setAddDraft(d => ({
+        ...d,
+        project: e.target.value
+      }))
+    }, projects.map(p => /*#__PURE__*/React.createElement("option", {
+      key: p.id,
+      value: p.id
+    }, p.name)))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'flex-end'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        padding: '5px',
+        borderRadius: 6,
+        background: addNet > 0 ? 'rgba(16,35,71,0.08)' : 'var(--surface-muted)',
+        fontWeight: 700,
+        fontSize: 12,
+        color: addNet > 0 ? 'var(--brand-navy)' : 'var(--text-muted)',
+        textAlign: 'center',
+        width: '100%',
+        border: '1px solid var(--border)'
+      }
+    }, addNet > 0 ? addNet.toFixed(1) + 'h' : '--'))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: '2fr 1fr auto',
+        gap: 8
+      }
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 9,
+        fontWeight: 700,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 3
+      }
+    }, "TASK DESCRIPTION"), /*#__PURE__*/React.createElement("input", {
+      type: "text",
+      style: inStyle,
+      value: addDraft.title,
+      placeholder: "What did you work on?",
+      onChange: e => setAddDraft(d => ({
+        ...d,
+        title: e.target.value
+      }))
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 9,
+        fontWeight: 700,
+        color: 'var(--text-muted)',
+        display: 'block',
+        marginBottom: 3
+      }
+    }, "REMARKS"), /*#__PURE__*/React.createElement("input", {
+      type: "text",
+      style: inStyle,
+      value: addDraft.remarks,
+      placeholder: "Optional...",
+      onChange: e => setAddDraft(d => ({
+        ...d,
+        remarks: e.target.value
+      }))
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'flex-end',
+        gap: 5
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => saveAdd(dStr),
+      disabled: !!saving || !addDraft.title || addNet <= 0,
+      style: {
+        background: 'var(--brand-navy)',
+        color: 'white',
+        border: 'none',
+        padding: '6px 14px',
+        borderRadius: 7,
+        fontSize: 11,
+        fontWeight: 600,
+        cursor: 'pointer'
+      }
+    }, saving === dStr ? '...' : '+ Add'))))));
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'var(--surface)',
+      borderRadius: 10,
+      border: '2px solid var(--brand-navy)',
+      padding: '12px 20px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 600,
+      fontSize: 13,
+      color: 'var(--brand-navy)'
+    }
+  }, "Month Total"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 800,
+      fontSize: 18,
+      color: 'var(--brand-navy)',
+      fontVariantNumeric: 'tabular-nums'
+    }
+  }, monthTotal.toFixed(2), "h")));
+}
 function EmployeeView({
   featuresEnabled,
   user,
@@ -6115,34 +7673,11 @@ function EmployeeView({
     userId: user?.id
   }), /*#__PURE__*/React.createElement(WeekBars, {
     user: user
-  }))), nav === 'timesheet' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    className: "section-title",
-    style: {
-      marginTop: 0
-    }
-  }, /*#__PURE__*/React.createElement("h2", null, "My Timesheet"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: 8
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "hint"
-  }, getWeekLabel()))), /*#__PURE__*/React.createElement(WeeklyGrid, {
-    user: user
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "section-title"
-  }, /*#__PURE__*/React.createElement("h2", null, "Today's entries"), /*#__PURE__*/React.createElement("span", {
-    className: "hint"
-  }, todayLabel)), /*#__PURE__*/React.createElement("div", {
-    className: "col-8-4"
-  }, /*#__PURE__*/React.createElement(TodayEntries, {
+  }))), nav === 'timesheet' && /*#__PURE__*/React.createElement(TimesheetHub, {
+    user: user,
     entries: entries,
-    setEntries: setEntries,
-    userId: user?.id
-  }), /*#__PURE__*/React.createElement(WeekBars, {
-    user: user
-  }))), nav === 'projects' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    setEntries: setEntries
+  }), nav === 'projects' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "section-title",
     style: {
       marginTop: 0
@@ -10079,10 +11614,15 @@ async function exportToExcel(user, weekOffset, opts) {
   var projMap = {};
   entries.forEach(function (e) {
     var pid = e.project_id || 'other';
-    if (!projMap[pid]) projMap[pid] = {
-      name: e.project_name || e.project_id || 'Other',
-      hours: [0, 0, 0, 0, 0]
-    };
+    if (!projMap[pid]) {
+      var _p = (window.DATA.PROJECTS || []).find(function (p) {
+        return p.id === pid;
+      });
+      projMap[pid] = {
+        name: _p ? _p.name : e.project_name || e.project_id || 'Other',
+        hours: [0, 0, 0, 0, 0]
+      };
+    }
     var di = dates.indexOf(e.date);
     if (di >= 0) projMap[pid].hours[di] += parseFloat(e.hours || 0);
   });
@@ -11239,6 +12779,260 @@ function TeamExportButtons() {
     }
   }));
 }
+
+// ============================================================
+// DAILY PDF EXPORT
+// ============================================================
+async function exportDailyPDF(user, date) {
+  var jsPDF = window.jspdf && window.jspdf.jsPDF;
+  if (!jsPDF) {
+    alert('PDF library not loaded.');
+    return;
+  }
+  var dateObj = new Date((date || new Date().toISOString().split('T')[0]) + 'T00:00:00');
+  var dateLabel = dateObj.toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+  var entries = [];
+  if (window.SupaEntries && window.SupaEntries.forDay) {
+    entries = await window.SupaEntries.forDay(user.id, date || new Date().toISOString().split('T')[0]);
+  }
+  var total = entries.reduce(function (s, e) {
+    return s + parseFloat(e.hours || 0);
+  }, 0);
+  var projects = window.DATA.PROJECTS || [];
+  var doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+  var PW = doc.internal.pageSize.getWidth(),
+    PH = doc.internal.pageSize.getHeight();
+  pdfHeader(doc, PW, 'Daily Timesheet', dateLabel);
+  pdfInfoBar(doc, PW, [['Employee', user.name || '-'], ['Date', dateLabel], ['Total Hours', total.toFixed(2) + 'h'], ['Entries', entries.length + ' entries']], 32);
+  if (entries.length > 0) {
+    doc.autoTable({
+      head: [['Start', 'End', 'Lunch', 'Net Hrs', 'Project', 'Task Description', 'Remarks']],
+      body: entries.map(function (e) {
+        var proj = projects.find(function (p) {
+          return p.id === (e.project_id || e.project);
+        });
+        return [e.start_time || '08:30', e.end_time || '17:30', parseFloat(e.lunch_break || 1).toFixed(2) + 'h', parseFloat(e.hours || 0).toFixed(2) + 'h', proj ? proj.name : e.project_name || e.project_id || '-', e.title || '-', e.notes || '-'];
+      }),
+      startY: 52,
+      margin: {
+        left: 10,
+        right: 10
+      },
+      styles: {
+        font: 'helvetica',
+        fontSize: 9,
+        cellPadding: 3.5,
+        textColor: [30, 40, 60]
+      },
+      headStyles: {
+        fillColor: NLA_NAVY,
+        textColor: NLA_WHITE,
+        fontStyle: 'bold',
+        fontSize: 8.5
+      },
+      columnStyles: {
+        0: {
+          cellWidth: 18,
+          halign: 'center'
+        },
+        1: {
+          cellWidth: 18,
+          halign: 'center'
+        },
+        2: {
+          cellWidth: 18,
+          halign: 'center'
+        },
+        3: {
+          cellWidth: 18,
+          halign: 'center',
+          fontStyle: 'bold'
+        },
+        4: {
+          cellWidth: 40
+        }
+      },
+      alternateRowStyles: {
+        fillColor: [245, 248, 252]
+      }
+    });
+    var y = doc.lastAutoTable.finalY + 8;
+    doc.setFillColor(NLA_NAVY[0], NLA_NAVY[1], NLA_NAVY[2]);
+    doc.rect(10, y, PW - 20, 9, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('TOTAL: ' + total.toFixed(2) + ' hours', PW / 2, y + 6, {
+      align: 'center'
+    });
+  } else {
+    doc.setTextColor(120, 130, 150);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text('No entries logged for this date.', PW / 2, 70, {
+      align: 'center'
+    });
+  }
+  pdfFooter(doc, PW, PH, 1, 1);
+  doc.save('NLA_Daily_' + (user.name || user.username).replace(/\s+/g, '_') + '_' + (date || 'today') + '.pdf');
+}
+
+// ============================================================
+// DAILY EXCEL EXPORT (ExcelJS)
+// ============================================================
+async function exportDailyExcel(user, date) {
+  date = date || new Date().toISOString().split('T')[0];
+  var dateObj = new Date(date + 'T00:00:00');
+  var dateLabel = dateObj.toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+  var projects = window.DATA.PROJECTS || [];
+  var entries = [];
+  if (window.SupaEntries && window.SupaEntries.forDay) {
+    entries = await window.SupaEntries.forDay(user.id, date);
+  }
+  var total = entries.reduce(function (s, e) {
+    return s + parseFloat(e.hours || 0);
+  }, 0);
+  if (!window.ExcelJS) {
+    var XLSX = window.XLSX,
+      wb2 = XLSX.utils.book_new();
+    var rows = [['NATURE LANDSCAPE ARCHITECTS'], ['Daily Timesheet - ' + dateLabel], [''], ['Employee:', user.name, '', 'Date:', dateLabel], [''], ['Start', 'End', 'Lunch', 'Net Hrs', 'Project', 'Task Description', 'Remarks']];
+    entries.forEach(function (e) {
+      var proj = projects.find(function (p) {
+        return p.id === (e.project_id || e.project);
+      });
+      rows.push([e.start_time || '08:30', e.end_time || '17:30', parseFloat(e.lunch_break || 1).toFixed(2), parseFloat(e.hours || 0).toFixed(2), proj ? proj.name : e.project_name || e.project_id || '-', e.title || '-', e.notes || '-']);
+    });
+    rows.push(['', '', '', 'TOTAL: ' + total.toFixed(2) + 'h', '', '', '']);
+    var ws2 = XLSX.utils.aoa_to_sheet(rows);
+    ws2['!cols'] = [{
+      wch: 10
+    }, {
+      wch: 10
+    }, {
+      wch: 10
+    }, {
+      wch: 10
+    }, {
+      wch: 30
+    }, {
+      wch: 45
+    }, {
+      wch: 20
+    }];
+    XLSX.utils.book_append_sheet(wb2, ws2, 'Daily');
+    XLSX.writeFile(wb2, 'NLA_Daily_' + (user.name || user.username).replace(/\s+/g, '_') + '_' + date + '.xlsx');
+    return;
+  }
+  var EJS = window.ExcelJS,
+    wb = new EJS.Workbook();
+  wb.creator = 'NLA Timesheet';
+  wb.created = new Date();
+  var ws = wb.addWorksheet('Daily Timesheet', {
+    pageSetup: {
+      paperSize: 9,
+      orientation: 'portrait'
+    }
+  });
+  ws.columns = [{
+    width: 10
+  }, {
+    width: 10
+  }, {
+    width: 10
+  }, {
+    width: 10
+  }, {
+    width: 32
+  }, {
+    width: 48
+  }, {
+    width: 22
+  }];
+  var F = ejsFills(),
+    B = ejsBorders();
+  addExcelHeader(wb, ws, F, B, 'NATURE LANDSCAPE ARCHITECTS', 'DAILY TIMESHEET', 7);
+
+  // Info row
+  var ir = ws.addRow([]);
+  ir.height = 18;
+  [['Employee', user.name], ['Date', dateLabel], ['Total', total.toFixed(2) + 'h']].forEach(function (pair, i) {
+    var lc = ir.getCell(i * 2 + 1),
+      vc = ir.getCell(i * 2 + 2);
+    lc.value = pair[0];
+    vc.value = pair[1];
+    lc.fill = F.info;
+    vc.fill = F.light;
+    lc.font = ejsFont('FF102347', 10, true);
+    vc.font = ejsFont('FF102347', 10);
+    lc.alignment = ejsAlign('left', 'middle');
+    vc.alignment = ejsAlign('left', 'middle');
+    lc.border = B.bBottom;
+    vc.border = B.bBottom;
+  });
+  ws.addRow([]);
+  ws.lastRow.height = 8;
+  addLogSheetBanner(ws, F, B, null, 7);
+  var hRow = ws.addRow(['START', 'END', 'LUNCH', 'NET HRS', 'PROJECT NAME', 'TASK DESCRIPTION', 'REMARKS']);
+  hRow.height = 28;
+  hRow.eachCell(function (cell) {
+    cell.fill = F.navy;
+    cell.font = ejsFont('FFFFFFFF', 9, true);
+    cell.alignment = ejsAlign('center', 'middle', true);
+    cell.border = B.allMed;
+  });
+  entries.forEach(function (entry, idx) {
+    var proj = projects.find(function (p) {
+      return p.id === (entry.project_id || entry.project);
+    });
+    var row = ws.addRow([entry.start_time || '08:30', entry.end_time || '17:30', parseFloat(entry.lunch_break || 1).toFixed(2), parseFloat(entry.hours || 0).toFixed(2), proj ? proj.name : entry.project_name || entry.project_id || '-', entry.title || '-', entry.notes || '-']);
+    row.height = 18;
+    row.eachCell(function (cell, col) {
+      cell.fill = idx % 2 === 0 ? F.white : F.lgray;
+      cell.font = ejsFont('FF102347', 9);
+      cell.alignment = col <= 4 ? ejsAlign('center', 'middle') : ejsAlign('left', 'middle');
+      cell.border = B.allHair;
+    });
+  });
+  if (entries.length === 0) {
+    var er = ws.addRow(['', '', '', '', 'No entries for this date', '', '']).height = 20;
+  }
+  var tr = ws.addRow(['', '', '', 'TOTAL: ' + total.toFixed(2) + 'h', '', '', '']);
+  tr.height = 22;
+  tr.eachCell(function (cell) {
+    cell.fill = F.navy;
+    cell.font = ejsFont('FFFFFFFF', 10, true);
+    cell.alignment = ejsAlign('center', 'middle');
+    cell.border = B.allMed;
+  });
+  var buf = await wb.xlsx.writeBuffer();
+  var blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'NLA_Daily_' + (user.name || user.username).replace(/\s+/g, '_') + '_' + date + '.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+window.exportDailyPDF = exportDailyPDF;
+window.exportDailyExcel = exportDailyExcel;
 window.ExportButtons = ExportButtons;
 window.TeamExportButtons = TeamExportButtons;
 window.exportToExcel = exportToExcel;
