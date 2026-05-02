@@ -1969,10 +1969,31 @@ const SupaEntries = {
   },
   // Manager: load all team entries + hours summary for a date range
   async teamSummary(fromDate, toDate) {
-    const {
+    // Try with all fields including time columns
+    const tryQuery = async selectStr => {
+      const {
+        data,
+        error
+      } = await sb.from('entries').select(selectStr).gte('date', fromDate).lte('date', toDate).order('date');
+      return {
+        data,
+        error
+      };
+    };
+
+    // First try with start_time, end_time, lunch_break
+    let {
       data,
       error
-    } = await sb.from('entries').select('user_id, date, hours, project_id, status, profiles(name, initials, role)').gte('date', fromDate).lte('date', toDate).order('date');
+    } = await tryQuery('id, user_id, date, hours, project_id, project_name, task_type, title, notes, status, start_time, end_time, lunch_break, profiles(name, initials, role)');
+
+    // If failed (likely missing time columns), retry without them
+    if (error) {
+      console.warn('Query with time fields failed, retrying without:', error.message);
+      const r2 = await tryQuery('id, user_id, date, hours, project_id, project_name, task_type, title, notes, status, profiles(name, initials, role)');
+      data = r2.data;
+      error = r2.error;
+    }
     if (error) {
       console.warn('Team summary error:', error.message);
       return [];
@@ -4642,9 +4663,24 @@ function TodayEntries({
     }));
     setSaving(false);
   };
-  const removeEntry = async id => {
+  const [confirmDelDaily, setConfirmDelDaily] = useStateEmp(null);
+  const askDeleteDaily = entry => {
+    setConfirmDelDaily({
+      id: entry.id,
+      title: entry.title || 'this entry'
+    });
+  };
+  const removeEntry = async () => {
+    if (!confirmDelDaily) return;
+    const id = confirmDelDaily.id;
+    setConfirmDelDaily(null);
+    if (!id) return;
     setEntries(prev => prev.filter(e => e.id !== id));
-    await window.SupaEntries.remove(id);
+    try {
+      await window.SupaEntries.remove(id);
+    } catch (err) {
+      console.error('Delete error:', err);
+    }
   };
   const startEdit = entry => {
     setEditingId(entry.id);
@@ -4712,7 +4748,57 @@ function TodayEntries({
     style: {
       overflow: 'visible'
     }
+  }, confirmDelDaily && /*#__PURE__*/React.createElement("div", {
+    className: "modal-backdrop",
+    onClick: () => setConfirmDelDaily(null)
   }, /*#__PURE__*/React.createElement("div", {
+    className: "modal-card",
+    onClick: e => e.stopPropagation(),
+    style: {
+      maxWidth: 400,
+      marginTop: 120,
+      background: 'var(--surface)',
+      borderRadius: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '20px 24px 14px'
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      margin: '0 0 8px',
+      fontSize: 15
+    }
+  }, "Delete entry?"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      color: 'var(--text-muted)',
+      lineHeight: 1.5
+    }
+  }, "Permanently delete ", /*#__PURE__*/React.createElement("strong", null, "\"", confirmDelDaily.title, "\""), "? This cannot be undone.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '0 24px 20px',
+      display: 'flex',
+      gap: 8,
+      justifyContent: 'flex-end'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => setConfirmDelDaily(null)
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    onClick: removeEntry,
+    style: {
+      background: '#c0392b',
+      color: 'white',
+      border: 'none',
+      padding: '8px 18px',
+      borderRadius: 8,
+      fontSize: 13,
+      fontWeight: 600,
+      cursor: 'pointer'
+    }
+  }, "Delete")))), /*#__PURE__*/React.createElement("div", {
     className: "card-header",
     style: {
       borderBottom: '2px solid var(--border)'
@@ -5181,16 +5267,17 @@ function TodayEntries({
         color: 'var(--text)'
       }
     }, "Edit"), /*#__PURE__*/React.createElement("button", {
-      onClick: () => removeEntry(entry.id),
+      onClick: () => askDeleteDaily(entry),
       style: {
         background: 'none',
-        border: 'none',
-        padding: '4px 6px',
+        border: '1px solid #fca5a5',
+        padding: '4px 8px',
         cursor: 'pointer',
-        color: 'var(--text-muted)',
-        borderRadius: 6
+        color: '#c0392b',
+        borderRadius: 6,
+        fontSize: 11
       },
-      title: "Remove"
+      title: "Delete entry"
     }, /*#__PURE__*/React.createElement(Icon, {
       name: "x",
       size: 13
@@ -6097,6 +6184,10 @@ function TimesheetHub({
   const [monthOffset, setMonthOffset] = useStateEmp(0);
   const [exporting, setExporting] = useStateEmp(null);
   const [exportDialog, setExportDialog] = useStateEmp(null);
+  // Submit weekly timesheet
+  const [submitting, setSubmitting] = useStateEmp(false);
+  const [submitMsg, setSubmitMsg] = useStateEmp('');
+  const [confirmSubmit, setConfirmSubmit] = useStateEmp(false);
 
   // -- date helpers ------------------------------------------
   const getWeekDates = off => {
@@ -6146,6 +6237,45 @@ function TimesheetHub({
       year: 'numeric'
     });
   })();
+
+  // -- Submit Weekly Timesheet -----------------------------
+  const doSubmitWeek = async () => {
+    if (submitting) return;
+    setConfirmSubmit(false);
+    setSubmitting(true);
+    try {
+      const s = new Date(weekDates[0] + 'T12:00:00');
+      const e = new Date(weekDates[4] + 'T12:00:00');
+      const weekLabel = s.toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short'
+      }) + ' - ' + e.toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+
+      // Calculate total hours for the week
+      const all = await window.SupaEntries.teamSummary(weekDates[0], weekDates[4]);
+      const mine = all.filter(x => x.user_id === user.id);
+      const totalHours = mine.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
+      const notifyPayload = {
+        employeeName: user.name,
+        employeeRole: user.role || '',
+        weekLabel,
+        totalHours: totalHours.toFixed(1),
+        mondayDate: weekDates[0]
+      };
+      const ok = await window.SupaEntries.submitWeek(user.id, weekDates[0], notifyPayload);
+      setSubmitMsg(ok ? 'Timesheet submitted successfully!' : 'Submission failed - please try again.');
+      setTimeout(() => setSubmitMsg(''), 4000);
+    } catch (err) {
+      console.error('Submit error:', err);
+      setSubmitMsg('Submission failed: ' + (err.message || 'unknown error'));
+      setTimeout(() => setSubmitMsg(''), 4000);
+    }
+    setSubmitting(false);
+  };
 
   // -- exports -----------------------------------------------
   const doExport = async type => {
@@ -6263,7 +6393,89 @@ function TimesheetHub({
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "download",
     size: 12
-  }), exporting === type ? '...' : type.includes('pdf') ? 'PDF' : 'Excel')))), view === 'daily' && /*#__PURE__*/React.createElement(DailyView, {
+  }), exporting === type ? '...' : type.includes('pdf') ? 'PDF' : 'Excel')), view === 'weekly' && /*#__PURE__*/React.createElement("button", {
+    onClick: () => setConfirmSubmit(true),
+    disabled: submitting,
+    style: {
+      background: 'var(--brand-navy)',
+      color: 'white',
+      border: 'none',
+      padding: '6px 14px',
+      borderRadius: 7,
+      fontSize: 12,
+      fontWeight: 600,
+      cursor: 'pointer',
+      marginLeft: 6,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 4,
+      opacity: submitting ? 0.5 : 1
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "check",
+    size: 12
+  }), submitting ? 'Submitting...' : 'Submit Week'))), confirmSubmit && /*#__PURE__*/React.createElement("div", {
+    className: "modal-backdrop",
+    onClick: () => setConfirmSubmit(false)
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "modal-card",
+    onClick: e => e.stopPropagation(),
+    style: {
+      maxWidth: 440,
+      marginTop: 120,
+      background: 'var(--surface)',
+      borderRadius: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '20px 24px 14px'
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      margin: '0 0 8px',
+      fontSize: 15
+    }
+  }, "Submit weekly timesheet?"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      color: 'var(--text-muted)',
+      lineHeight: 1.6
+    }
+  }, "This will submit your timesheet for the week of ", /*#__PURE__*/React.createElement("strong", null, weekDates[0]), " to ", /*#__PURE__*/React.createElement("strong", null, weekDates[4]), " for manager approval. You can still edit entries until they are approved.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '0 24px 20px',
+      display: 'flex',
+      gap: 8,
+      justifyContent: 'flex-end'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => setConfirmSubmit(false)
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    onClick: doSubmitWeek,
+    style: {
+      background: 'var(--brand-navy)',
+      color: 'white',
+      border: 'none',
+      padding: '8px 18px',
+      borderRadius: 8,
+      fontSize: 13,
+      fontWeight: 600,
+      cursor: 'pointer'
+    }
+  }, "Submit for approval")))), submitMsg && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: submitMsg.includes('success') ? 'rgba(29,142,74,0.08)' : 'rgba(192,57,43,0.08)',
+      border: '1px solid ' + (submitMsg.includes('success') ? '#1d8e4a' : '#c0392b'),
+      color: submitMsg.includes('success') ? '#16794c' : '#c0392b',
+      padding: '10px 14px',
+      borderRadius: 8,
+      fontSize: 13,
+      marginBottom: 12,
+      fontWeight: 500
+    }
+  }, submitMsg), view === 'daily' && /*#__PURE__*/React.createElement(DailyView, {
     user: user,
     entries: entries,
     setEntries: setEntries,
