@@ -4797,7 +4797,7 @@ function TodayEntries({
   }, (window.DATA.PROJECTS || []).map(p => /*#__PURE__*/React.createElement("option", {
     key: p.id,
     value: p.id
-  }, p.code, " - ", p.name)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+  }, p.name)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     style: labelStyle
   }, "Task Description"), /*#__PURE__*/React.createElement("input", {
     type: "text",
@@ -4976,7 +4976,7 @@ function TodayEntries({
       }, (window.DATA.PROJECTS || []).map(p => /*#__PURE__*/React.createElement("option", {
         key: p.id,
         value: p.id
-      }, p.code)))), /*#__PURE__*/React.createElement("td", {
+      }, p.name)))), /*#__PURE__*/React.createElement("td", {
         style: {
           padding: '8px 8px'
         }
@@ -5109,7 +5109,7 @@ function TodayEntries({
         fontWeight: 600,
         color: 'var(--brand-navy)'
       }
-    }, p?.code || entry.project_id || ''))), /*#__PURE__*/React.createElement("td", {
+    }, p?.name || entry.project_name || entry.project_id || ''))), /*#__PURE__*/React.createElement("td", {
       style: {
         padding: '10px 12px',
         color: 'var(--text)',
@@ -5262,10 +5262,13 @@ function WeeklyGrid({
       // Also include projects that appear in entries but not in DATA.PROJECTS
       entries.forEach(e => {
         if (!projMap[e.project_id]) {
+          var _rp = (window.DATA.PROJECTS || []).find(function (p) {
+            return p.id === e.project_id;
+          });
           projMap[e.project_id] = {
             project: e.project_id,
-            projectName: e.project_name || e.project_id,
-            client: '',
+            projectName: _rp ? _rp.name : e.project_name || e.project_id,
+            client: _rp ? _rp.client || '' : '',
             hours: [0, 0, 0, 0, 0]
           };
         }
@@ -5419,7 +5422,7 @@ function WeeklyGrid({
     className: "week-project"
   }, row.projectName, row.client && /*#__PURE__*/React.createElement("div", {
     className: "proj-sub"
-  }, row.project.toUpperCase(), "   ", row.client))), row.hours.map((h, ci) => /*#__PURE__*/React.createElement("td", {
+  }, (window.DATA.PROJECTS || []).find(p => p.id === row.project)?.code || row.project.toUpperCase(), "   ", row.client))), row.hours.map((h, ci) => /*#__PURE__*/React.createElement("td", {
     key: ci,
     className: `week-cell ${h > 0 ? 'has-value' : 'empty'} ${dates[ci] === today ? 'today-col' : ''}`
   }, /*#__PURE__*/React.createElement("input", {
@@ -9096,14 +9099,14 @@ function TeamEmployeeBreakdown({
       projects: {}
     };
     byDate[e.date].hours += parseFloat(e.hours);
-    const pk = e.project_name || e.project_id || ' ';
+    const pk = (window.DATA.PROJECTS || []).find(p => p.id === e.project_id)?.name || e.project_name || e.project_id || ' ';
     byDate[e.date].projects[pk] = (byDate[e.date].projects[pk] || 0) + parseFloat(e.hours);
   });
 
   // Group by project
   const byProject = {};
   entries.forEach(e => {
-    const pk = e.project_name || e.project_id || ' ';
+    const pk = (window.DATA.PROJECTS || []).find(p => p.id === e.project_id)?.name || e.project_name || e.project_id || ' ';
     byProject[pk] = (byProject[pk] || 0) + parseFloat(e.hours);
   });
   const sortedDates = Object.keys(byDate).sort();
@@ -9638,7 +9641,7 @@ function ReviewModal({
       fontWeight: 500,
       color: 'var(--text)'
     }
-  }, e.project_name || e.project_id), e.title && e.title !== 'Weekly timesheet   ' + e.project_name && /*#__PURE__*/React.createElement("span", {
+  }, (window.DATA.PROJECTS || []).find(p => p.id === e.project_id)?.name || e.project_name || e.project_id), e.title && e.title !== 'Weekly timesheet   ' + e.project_name && /*#__PURE__*/React.createElement("span", {
     style: {
       color: 'var(--text-muted)',
       marginLeft: 6
@@ -10973,7 +10976,7 @@ function EmployeeTimesheetEditor({
         fontWeight: 500,
         color: 'var(--text)'
       }
-    }, entry.project_name || entry.project_id), /*#__PURE__*/React.createElement("td", {
+    }, (window.DATA.PROJECTS || []).find(p => p.id === entry.project_id)?.name || entry.project_name || entry.project_id), /*#__PURE__*/React.createElement("td", {
       style: {
         padding: '10px 14px',
         color: 'var(--text-muted)',
