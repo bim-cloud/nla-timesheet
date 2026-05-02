@@ -6266,30 +6266,39 @@ function WeeklyView({
   weekDates,
   weekOffset
 }) {
+  // weekEntries: array of entry objects from Supabase for this week
   const [weekEntries, setWeekEntries] = useStateEmp([]);
   const [loading, setLoading] = useStateEmp(true);
+
+  // Per-entry edit state
   const [editingId, setEditingId] = useStateEmp(null);
   const [editDraft, setEditDraft] = useStateEmp({});
+
+  // Per-day add form state (keyed by date string e.g. "2026-05-01")
   const [showAddFor, setShowAddFor] = useStateEmp(null);
-  // Per-day add drafts - keyed by date string
   const [addDrafts, setAddDrafts] = useStateEmp({});
-  // Per-day lunch break - keyed by date string
   const [dayLunch, setDayLunch] = useStateEmp({});
   const [saving, setSaving] = useStateEmp(null);
   const projects = window.DATA.PROJECTS || [];
-  const defaultProject = projects[0]?.id || '';
+  const defaultProj = projects[0]?.id || '';
+
+  // --- Date helpers (FIXED: no timezone conversion) ---
+  const pad = n => String(n).padStart(2, '0');
+  // weekDates are already correct ISO strings from TimesheetHub
+
+  // --- Per-day draft helpers ---
   const getDraft = date => addDrafts[date] || {
     start_time: '08:30',
     end_time: '17:30',
-    project: defaultProject,
+    project: defaultProj,
     title: '',
     remarks: ''
   };
-  const setDraft = (date, updates) => setAddDrafts(prev => ({
+  const setDraft = (date, upd) => setAddDrafts(prev => ({
     ...prev,
     [date]: {
       ...getDraft(date),
-      ...updates
+      ...upd
     }
   }));
   const getLunch = date => dayLunch[date] !== undefined ? dayLunch[date] : '1.00';
@@ -6297,6 +6306,8 @@ function WeeklyView({
     ...prev,
     [date]: val
   }));
+
+  // --- Net hours calculation ---
   const calcNet = (start, end, lunch) => {
     if (!start || !end) return 0;
     const toH = t => {
@@ -6305,24 +6316,41 @@ function WeeklyView({
     };
     return Math.round(Math.max(0, toH(end) - toH(start) - parseFloat(lunch || 0)) * 100) / 100;
   };
+
+  // --- Load entries ---
   useEffectEmp(() => {
     if (!user) return;
     setLoading(true);
+    setWeekEntries([]);
     window.SupaEntries.teamSummary(weekDates[0], weekDates[4]).then(all => {
-      setWeekEntries(all.filter(e => e.user_id === user.id));
+      // Deep clone to avoid shared reference bugs
+      const mine = all.filter(e => e.user_id === user.id).map(e => ({
+        ...e
+      }));
+      setWeekEntries(mine);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [user?.id, weekDates[0]]);
+
+  // --- Build per-day map (FIXED: exact string comparison) ---
   const byDate = {};
   weekDates.forEach(d => {
     byDate[d] = [];
   });
   weekEntries.forEach(e => {
-    if (byDate[e.date]) byDate[e.date].push(e);
+    if (e.date && byDate[e.date]) {
+      byDate[e.date].push(e);
+    }
   });
-  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+
+  // --- CRUD ---
   const removeEntry = async id => {
-    setWeekEntries(prev => prev.filter(e => String(e.id) !== String(id)));
+    if (!id) return;
+    // Remove immediately from UI
+    setWeekEntries(prev => prev.filter(e => e.id !== id));
+    // Then delete from DB
     try {
       await window.SupaEntries.remove(id);
     } catch (err) {
@@ -6335,9 +6363,9 @@ function WeeklyView({
     const net = calcNet(draft.start_time, draft.end_time, lunch);
     if (!draft.title || net <= 0) return;
     setSaving(date);
-    const pid = draft.project || defaultProject;
+    const pid = draft.project || defaultProj;
     const proj = projects.find(p => p.id === pid);
-    const saved = await window.SupaEntries.add(user.id, {
+    const newEntry = {
       project: pid,
       type: 'design',
       title: draft.title,
@@ -6347,21 +6375,18 @@ function WeeklyView({
       start_time: draft.start_time,
       end_time: draft.end_time,
       lunch_break: parseFloat(lunch || 0)
-    });
-    if (saved) setWeekEntries(prev => [...prev, {
-      ...saved,
-      user_id: user.id,
-      date,
-      hours: net,
-      project_id: pid,
-      project_name: proj?.name || pid,
-      title: draft.title,
-      notes: draft.remarks || '',
-      start_time: draft.start_time,
-      end_time: draft.end_time,
-      lunch_break: parseFloat(lunch || 0)
-    }]);
-    // Clear only this day's draft title/task (keep times for convenience)
+    };
+    const saved = await window.SupaEntries.add(user.id, newEntry);
+    // Only add to state if we got a real ID back (avoids null-id delete bug)
+    if (saved && saved.id) {
+      setWeekEntries(prev => [...prev, {
+        ...newEntry,
+        id: saved.id,
+        user_id: user.id,
+        project_id: pid,
+        project_name: proj ? proj.name : pid
+      }]);
+    }
     setDraft(date, {
       title: '',
       remarks: ''
@@ -6369,14 +6394,14 @@ function WeeklyView({
     setShowAddFor(null);
     setSaving(null);
   };
-  const startEdit = e => {
-    setEditingId(e.id);
+  const startEdit = entry => {
+    setEditingId(entry.id);
     setEditDraft({
-      start_time: e.start_time || '08:30',
-      end_time: e.end_time || '17:30',
-      project: e.project_id || e.project || defaultProject,
-      title: e.title || '',
-      remarks: e.notes || ''
+      start_time: entry.start_time || '08:30',
+      end_time: entry.end_time || '17:30',
+      project: entry.project_id || entry.project || defaultProj,
+      title: entry.title || '',
+      remarks: entry.notes || ''
     });
   };
   const saveEdit = async (id, date) => {
@@ -6391,7 +6416,9 @@ function WeeklyView({
         end_time: editDraft.end_time,
         lunch_break: parseFloat(lunch || 0)
       }).eq('id', id);
-    } catch (e) {}
+    } catch (e) {
+      console.error('Update error:', e);
+    }
     setWeekEntries(prev => prev.map(e => e.id === id ? {
       ...e,
       hours: net,
@@ -6404,7 +6431,9 @@ function WeeklyView({
     setEditingId(null);
   };
   const grandTotal = weekEntries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
-  const inStyle = {
+
+  // --- Styles ---
+  const inSt = {
     border: '1px solid var(--border)',
     borderRadius: 6,
     padding: '5px 8px',
@@ -6414,7 +6443,9 @@ function WeeklyView({
     fontFamily: 'inherit',
     width: '100%'
   };
-  const lbl = text => /*#__PURE__*/React.createElement("label", {
+  const LBL = ({
+    children
+  }) => /*#__PURE__*/React.createElement("label", {
     style: {
       fontSize: 9,
       fontWeight: 700,
@@ -6424,9 +6455,9 @@ function WeeklyView({
       display: 'block',
       marginBottom: 3
     }
-  }, text);
-  const thStyle = {
-    padding: '9px 12px',
+  }, children);
+  const thSt = {
+    padding: '8px 12px',
     fontSize: 10,
     fontWeight: 700,
     textTransform: 'uppercase',
@@ -6437,18 +6468,29 @@ function WeeklyView({
     borderBottom: '2px solid var(--border)',
     whiteSpace: 'nowrap'
   };
-  return /*#__PURE__*/React.createElement("div", null, weekDates.map((date, dayIdx) => {
+  return /*#__PURE__*/React.createElement("div", null, loading && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: 40,
+      textAlign: 'center',
+      color: 'var(--text-muted)',
+      fontSize: 13
+    }
+  }, "Loading..."), weekDates.map((date, dayIdx) => {
     const dayEntries = byDate[date] || [];
     const dayTotal = dayEntries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
-    const isToday = date === new Date().toISOString().split('T')[0];
+    const isToday = date === todayStr;
     const draft = getDraft(date);
     const lunch = getLunch(date);
     const addNet = calcNet(draft.start_time, draft.end_time, lunch);
     const isAddOpen = showAddFor === date;
+    const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short'
+    });
     return /*#__PURE__*/React.createElement("div", {
       key: date,
       style: {
-        marginBottom: 12,
+        marginBottom: 10,
         borderRadius: 12,
         border: '1px solid var(--border)',
         overflow: 'hidden',
@@ -6482,19 +6524,16 @@ function WeeklyView({
         fontWeight: 600,
         fontSize: 14
       }
-    }, dayNames[dayIdx]), /*#__PURE__*/React.createElement("span", {
+    }, DAY_NAMES[dayIdx]), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 12,
         color: 'var(--text-muted)'
       }
-    }, new Date(date + 'T00:00:00').toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short'
-    }))), /*#__PURE__*/React.createElement("div", {
+    }, dateLabel)), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
         alignItems: 'center',
-        gap: 12
+        gap: 10
       }
     }, /*#__PURE__*/React.createElement("div", {
       style: {
@@ -6508,7 +6547,7 @@ function WeeklyView({
         color: 'var(--text-muted)',
         whiteSpace: 'nowrap'
       }
-    }, "Lunch break:"), /*#__PURE__*/React.createElement("input", {
+    }, "Lunch:"), /*#__PURE__*/React.createElement("input", {
       type: "number",
       step: "0.25",
       min: "0",
@@ -6516,12 +6555,12 @@ function WeeklyView({
       value: lunch,
       onChange: e => setLunch(date, e.target.value),
       style: {
-        ...inStyle,
-        width: 65,
+        ...inSt,
+        width: 60,
         textAlign: 'center',
         padding: '4px 6px'
       },
-      title: "Lunch break applies to all entries on this day"
+      title: "Shared lunch break for all entries on this day"
     }), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 11,
@@ -6531,7 +6570,8 @@ function WeeklyView({
       style: {
         fontWeight: 700,
         fontSize: 13,
-        color: 'var(--accent)'
+        color: 'var(--accent)',
+        fontVariantNumeric: 'tabular-nums'
       }
     }, dayTotal.toFixed(2), "h"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setShowAddFor(isAddOpen ? null : date),
@@ -6542,7 +6582,7 @@ function WeeklyView({
         border: 'none',
         fontSize: 11
       }
-    }, isAddOpen ? '- Cancel' : '+ Add entry'))), isAddOpen && /*#__PURE__*/React.createElement("div", {
+    }, isAddOpen ? 'Cancel' : '+ Add'))), isAddOpen && /*#__PURE__*/React.createElement("div", {
       style: {
         padding: '12px 16px',
         background: 'rgba(16,35,71,0.02)',
@@ -6551,37 +6591,26 @@ function WeeklyView({
     }, /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr 90px 1fr 80px',
+        gridTemplateColumns: '1fr 1fr 1fr 80px',
         gap: 8,
         marginBottom: 8
       }
-    }, /*#__PURE__*/React.createElement("div", null, lbl('Start time'), /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Start time"), /*#__PURE__*/React.createElement("input", {
       type: "time",
-      style: inStyle,
+      style: inSt,
       value: draft.start_time,
       onChange: e => setDraft(date, {
         start_time: e.target.value
       })
-    })), /*#__PURE__*/React.createElement("div", null, lbl('End time'), /*#__PURE__*/React.createElement("input", {
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "End time"), /*#__PURE__*/React.createElement("input", {
       type: "time",
-      style: inStyle,
+      style: inSt,
       value: draft.end_time,
       onChange: e => setDraft(date, {
         end_time: e.target.value
       })
-    })), /*#__PURE__*/React.createElement("div", null, lbl('Lunch (h)'), /*#__PURE__*/React.createElement("div", {
-      style: {
-        padding: '5px 8px',
-        borderRadius: 6,
-        background: 'rgba(16,35,71,0.06)',
-        fontWeight: 600,
-        fontSize: 13,
-        textAlign: 'center',
-        border: '1px solid var(--border)',
-        color: 'var(--brand-navy)'
-      }
-    }, getLunch(date), "h")), /*#__PURE__*/React.createElement("div", null, lbl('Project'), /*#__PURE__*/React.createElement("select", {
-      style: inStyle,
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Project"), /*#__PURE__*/React.createElement("select", {
+      style: inSt,
       value: draft.project,
       onChange: e => setDraft(date, {
         project: e.target.value
@@ -6589,16 +6618,16 @@ function WeeklyView({
     }, projects.map(p => /*#__PURE__*/React.createElement("option", {
       key: p.id,
       value: p.id
-    }, p.name)))), /*#__PURE__*/React.createElement("div", null, lbl('Net hours'), /*#__PURE__*/React.createElement("div", {
+    }, p.name)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Net hours"), /*#__PURE__*/React.createElement("div", {
       style: {
         padding: '5px 8px',
         borderRadius: 6,
-        background: addNet > 0 ? 'rgba(16,35,71,0.08)' : 'var(--surface-muted)',
+        textAlign: 'center',
         fontWeight: 700,
         fontSize: 13,
-        color: addNet > 0 ? 'var(--brand-navy)' : 'var(--text-muted)',
-        textAlign: 'center',
-        border: '1px solid var(--border)'
+        border: '1px solid var(--border)',
+        background: addNet > 0 ? 'rgba(16,35,71,0.08)' : 'var(--surface-muted)',
+        color: addNet > 0 ? 'var(--brand-navy)' : 'var(--text-muted)'
       }
     }, addNet > 0 ? addNet.toFixed(2) + 'h' : '--'))), /*#__PURE__*/React.createElement("div", {
       style: {
@@ -6606,18 +6635,18 @@ function WeeklyView({
         gridTemplateColumns: '2fr 1fr auto',
         gap: 8
       }
-    }, /*#__PURE__*/React.createElement("div", null, lbl('Task description'), /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Task description"), /*#__PURE__*/React.createElement("input", {
       type: "text",
-      style: inStyle,
+      style: inSt,
       value: draft.title,
       placeholder: "What did you work on?",
       onChange: e => setDraft(date, {
         title: e.target.value
       }),
       onKeyDown: e => e.key === 'Enter' && saveAdd(date)
-    })), /*#__PURE__*/React.createElement("div", null, lbl('Remarks'), /*#__PURE__*/React.createElement("input", {
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Remarks"), /*#__PURE__*/React.createElement("input", {
       type: "text",
-      style: inStyle,
+      style: inSt,
       value: draft.remarks || '',
       placeholder: "Optional...",
       onChange: e => setDraft(date, {
@@ -6626,8 +6655,7 @@ function WeeklyView({
     })), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
-        alignItems: 'flex-end',
-        gap: 6
+        alignItems: 'flex-end'
       }
     }, /*#__PURE__*/React.createElement("button", {
       onClick: () => saveAdd(date),
@@ -6640,147 +6668,138 @@ function WeeklyView({
         borderRadius: 7,
         fontSize: 12,
         fontWeight: 600,
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-        opacity: saving === date || !draft.title || addNet <= 0 ? 0.5 : 1
+        cursor: saving === date || !draft.title || addNet <= 0 ? 'not-allowed' : 'pointer',
+        opacity: saving === date || !draft.title || addNet <= 0 ? 0.5 : 1,
+        whiteSpace: 'nowrap'
       }
-    }, saving === date ? 'Saving...' : 'Add')))), dayEntries.length === 0 && !isAddOpen && /*#__PURE__*/React.createElement("div", {
+    }, saving === date ? 'Saving...' : 'Add')))), dayEntries.length === 0 && !isAddOpen && !loading && /*#__PURE__*/React.createElement("div", {
       style: {
         padding: '12px 16px',
         color: 'var(--text-muted)',
         fontSize: 12,
         textAlign: 'center'
       }
-    }, "No entries   click \"+ Add entry\" above"), dayEntries.length > 0 && /*#__PURE__*/React.createElement("table", {
+    }, "No entries"), dayEntries.length > 0 && /*#__PURE__*/React.createElement("table", {
       style: {
         width: '100%',
         borderCollapse: 'collapse',
         fontSize: 12
       }
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
-      style: {
-        background: 'var(--surface-muted)',
-        borderBottom: '1px solid var(--border)'
-      }
-    }, ['Start', 'End', 'Net Hrs', 'Project', 'Task Description', 'Remarks', ''].map(h => /*#__PURE__*/React.createElement("th", {
+    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['Start', 'End', 'Net Hrs', 'Project', 'Task', 'Remarks', ''].map(h => /*#__PURE__*/React.createElement("th", {
       key: h,
-      style: thStyle
+      style: thSt
     }, h)))), /*#__PURE__*/React.createElement("tbody", null, dayEntries.map((entry, i) => {
       const isEd = editingId === entry.id;
       const proj = projects.find(p => p.id === (entry.project_id || entry.project));
-      if (isEd) {
-        const eNet = calcNet(editDraft.start_time, editDraft.end_time, getLunch(date));
-        return /*#__PURE__*/React.createElement("tr", {
-          key: entry.id,
-          style: {
-            borderTop: '1px solid var(--border)',
-            background: 'rgba(16,35,71,0.02)'
-          }
-        }, /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '6px 8px'
-          }
-        }, /*#__PURE__*/React.createElement("input", {
-          type: "time",
-          style: inStyle,
-          value: editDraft.start_time,
-          onChange: e => setEditDraft(d => ({
-            ...d,
-            start_time: e.target.value
-          }))
-        })), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '6px 8px'
-          }
-        }, /*#__PURE__*/React.createElement("input", {
-          type: "time",
-          style: inStyle,
-          value: editDraft.end_time,
-          onChange: e => setEditDraft(d => ({
-            ...d,
-            end_time: e.target.value
-          }))
-        })), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '6px 12px',
-            fontWeight: 700,
-            color: 'var(--accent)',
-            textAlign: 'center'
-          }
-        }, eNet.toFixed(2), "h", /*#__PURE__*/React.createElement("div", {
-          style: {
-            fontSize: 9,
-            color: 'var(--text-muted)',
-            marginTop: 2
-          }
-        }, "Lunch: ", getLunch(date), "h")), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '6px 8px'
-          }
-        }, /*#__PURE__*/React.createElement("select", {
-          style: inStyle,
-          value: editDraft.project,
-          onChange: e => setEditDraft(d => ({
-            ...d,
-            project: e.target.value
-          }))
-        }, projects.map(p => /*#__PURE__*/React.createElement("option", {
-          key: p.id,
-          value: p.id
-        }, p.name)))), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '6px 8px'
-          }
-        }, /*#__PURE__*/React.createElement("input", {
-          type: "text",
-          style: inStyle,
-          value: editDraft.title,
-          onChange: e => setEditDraft(d => ({
-            ...d,
-            title: e.target.value
-          }))
-        })), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '6px 8px'
-          }
-        }, /*#__PURE__*/React.createElement("input", {
-          type: "text",
-          style: inStyle,
-          value: editDraft.remarks || '',
-          onChange: e => setEditDraft(d => ({
-            ...d,
-            remarks: e.target.value
-          }))
-        })), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '6px 8px',
-            whiteSpace: 'nowrap'
-          }
-        }, /*#__PURE__*/React.createElement("button", {
-          onClick: () => saveEdit(entry.id, date),
-          style: {
-            background: 'var(--brand-navy)',
-            color: 'white',
-            border: 'none',
-            padding: '4px 10px',
-            borderRadius: 5,
-            fontSize: 11,
-            cursor: 'pointer',
-            marginRight: 4
-          }
-        }, "Save"), /*#__PURE__*/React.createElement("button", {
-          onClick: () => setEditingId(null),
-          style: {
-            background: 'none',
-            border: '1px solid var(--border)',
-            padding: '4px 8px',
-            borderRadius: 5,
-            fontSize: 11,
-            cursor: 'pointer'
-          }
-        }, "X")));
-      }
-      return /*#__PURE__*/React.createElement("tr", {
+      const eNet = isEd ? calcNet(editDraft.start_time, editDraft.end_time, getLunch(date)) : 0;
+      return isEd ? /*#__PURE__*/React.createElement("tr", {
+        key: entry.id,
+        style: {
+          borderTop: '1px solid var(--border)',
+          background: 'rgba(16,35,71,0.02)'
+        }
+      }, /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '6px 8px'
+        }
+      }, /*#__PURE__*/React.createElement("input", {
+        type: "time",
+        style: inSt,
+        value: editDraft.start_time,
+        onChange: e => setEditDraft(d => ({
+          ...d,
+          start_time: e.target.value
+        }))
+      })), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '6px 8px'
+        }
+      }, /*#__PURE__*/React.createElement("input", {
+        type: "time",
+        style: inSt,
+        value: editDraft.end_time,
+        onChange: e => setEditDraft(d => ({
+          ...d,
+          end_time: e.target.value
+        }))
+      })), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '6px 12px',
+          fontWeight: 700,
+          color: 'var(--accent)',
+          textAlign: 'center'
+        }
+      }, eNet.toFixed(2), "h", /*#__PURE__*/React.createElement("div", {
+        style: {
+          fontSize: 9,
+          color: 'var(--text-muted)'
+        }
+      }, "-", getLunch(date), "h lunch")), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '6px 8px'
+        }
+      }, /*#__PURE__*/React.createElement("select", {
+        style: inSt,
+        value: editDraft.project,
+        onChange: e => setEditDraft(d => ({
+          ...d,
+          project: e.target.value
+        }))
+      }, projects.map(p => /*#__PURE__*/React.createElement("option", {
+        key: p.id,
+        value: p.id
+      }, p.name)))), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '6px 8px'
+        }
+      }, /*#__PURE__*/React.createElement("input", {
+        type: "text",
+        style: inSt,
+        value: editDraft.title,
+        onChange: e => setEditDraft(d => ({
+          ...d,
+          title: e.target.value
+        }))
+      })), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '6px 8px'
+        }
+      }, /*#__PURE__*/React.createElement("input", {
+        type: "text",
+        style: inSt,
+        value: editDraft.remarks || '',
+        onChange: e => setEditDraft(d => ({
+          ...d,
+          remarks: e.target.value
+        }))
+      })), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '6px 8px',
+          whiteSpace: 'nowrap'
+        }
+      }, /*#__PURE__*/React.createElement("button", {
+        onClick: () => saveEdit(entry.id, date),
+        style: {
+          background: 'var(--brand-navy)',
+          color: 'white',
+          border: 'none',
+          padding: '4px 10px',
+          borderRadius: 5,
+          fontSize: 11,
+          cursor: 'pointer',
+          marginRight: 4
+        }
+      }, "Save"), /*#__PURE__*/React.createElement("button", {
+        onClick: () => setEditingId(null),
+        style: {
+          background: 'none',
+          border: '1px solid var(--border)',
+          padding: '4px 8px',
+          borderRadius: 5,
+          fontSize: 11,
+          cursor: 'pointer'
+        }
+      }, "X"))) : /*#__PURE__*/React.createElement("tr", {
         key: entry.id,
         style: {
           borderTop: '1px solid var(--border)',
@@ -6810,7 +6829,7 @@ function WeeklyView({
           padding: '9px 12px',
           fontWeight: 500
         }
-      }, proj?.name || entry.project_name || entry.project_id || '-'), /*#__PURE__*/React.createElement("td", {
+      }, proj ? proj.name : entry.project_name || entry.project_id || '-'), /*#__PURE__*/React.createElement("td", {
         style: {
           padding: '9px 12px',
           maxWidth: 240,
@@ -6858,7 +6877,7 @@ function WeeklyView({
         size: 12
       }))));
     }))));
-  }), /*#__PURE__*/React.createElement("div", {
+  }), !loading && /*#__PURE__*/React.createElement("div", {
     style: {
       background: 'var(--surface)',
       borderRadius: 10,
@@ -6892,7 +6911,7 @@ function WeeklyView({
 }
 
 // ============================================================
-// Monthly View - calendar-style with entry fields per day
+// Monthly View - correct dates, proper delete, independent state
 // ============================================================
 function MonthlyView({
   user,
@@ -6902,17 +6921,50 @@ function MonthlyView({
   const [allEntries, setAllEntries] = useStateEmp([]);
   const [loading, setLoading] = useStateEmp(true);
   const [expandedDay, setExpandedDay] = useStateEmp(null);
-  const [addDraft, setAddDraft] = useStateEmp({
-    start_time: '08:30',
-    end_time: '17:30',
-    lunch_break: '1.00',
-    project: '',
-    title: '',
-    remarks: ''
-  });
-  const [saving, setSaving] = useStateEmp(false);
+
+  // Per-day add drafts (keyed by date)
+  const [addDrafts, setAddDrafts] = useStateEmp({});
+  const [dayLunch, setDayLunch] = useStateEmp({});
+  const [saving, setSaving] = useStateEmp(null);
   const [editingId, setEditingId] = useStateEmp(null);
   const [editDraft, setEditDraft] = useStateEmp({});
+  const projects = window.DATA.PROJECTS || [];
+  const defaultProj = projects[0]?.id || '';
+
+  // --- Date helpers (FIXED: direct string construction, no UTC conversion) ---
+  const pad = n => String(n).padStart(2, '0');
+  const d = new Date(monthRange.from + 'T12:00:00'); // noon avoids DST edge
+  const year = d.getFullYear();
+  const month = d.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // Build local date string without any timezone conversion
+  const makeDate = day => `${year}-${pad(month + 1)}-${pad(day)}`;
+
+  // Today in local timezone (YYYY-MM-DD)
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const DAY_ABBR = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  // --- Per-day helpers ---
+  const getDraft = date => addDrafts[date] || {
+    start_time: '08:30',
+    end_time: '17:30',
+    project: defaultProj,
+    title: '',
+    remarks: ''
+  };
+  const setDraft = (date, upd) => setAddDrafts(prev => ({
+    ...prev,
+    [date]: {
+      ...getDraft(date),
+      ...upd
+    }
+  }));
+  const getLunch = date => dayLunch[date] !== undefined ? dayLunch[date] : '1.00';
+  const setLunch = (date, val) => setDayLunch(prev => ({
+    ...prev,
+    [date]: val
+  }));
   const calcNet = (start, end, lunch) => {
     if (!start || !end) return 0;
     const toH = t => {
@@ -6921,49 +6973,53 @@ function MonthlyView({
     };
     return Math.round(Math.max(0, toH(end) - toH(start) - parseFloat(lunch || 0)) * 100) / 100;
   };
+
+  // --- Load entries ---
   useEffectEmp(() => {
     if (!user) return;
     setLoading(true);
+    setAllEntries([]);
     window.SupaEntries.teamSummary(monthRange.from, monthRange.to).then(all => {
-      setAllEntries(all.filter(e => e.user_id === user.id));
+      const mine = all.filter(e => e.user_id === user.id).map(e => ({
+        ...e
+      })); // clone
+      setAllEntries(mine);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [user?.id, monthRange.from]);
+
+  // --- Build per-day map ---
   const byDate = {};
   allEntries.forEach(e => {
-    if (!byDate[e.date]) byDate[e.date] = [];
-    byDate[e.date].push(e);
+    if (e.date) {
+      if (!byDate[e.date]) byDate[e.date] = [];
+      byDate[e.date].push(e);
+    }
   });
-  const d = new Date(monthRange.from + 'T00:00:00');
-  const year = d.getFullYear(),
-    month = d.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const today = new Date().toISOString().split('T')[0];
-  const projects = window.DATA.PROJECTS || [];
-  const monthTotal = allEntries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
+
+  // --- CRUD (FIXED: real id only, no null comparison) ---
   const removeEntry = async id => {
-    // Optimistic update first
-    setAllEntries(prev => prev.filter(e => String(e.id) !== String(id)));
+    if (!id) return;
+    setAllEntries(prev => prev.filter(e => e.id !== id));
     try {
       await window.SupaEntries.remove(id);
     } catch (err) {
       console.error('Delete error:', err);
     }
   };
-  const startEdit = e => {
-    setEditingId(e.id);
+  const startEdit = entry => {
+    setEditingId(entry.id);
     setEditDraft({
-      start_time: e.start_time || '08:30',
-      end_time: e.end_time || '17:30',
-      lunch_break: String(e.lunch_break || '1.00'),
-      project: e.project_id || e.project || '',
-      title: e.title || '',
-      remarks: e.notes || ''
+      start_time: entry.start_time || '08:30',
+      end_time: entry.end_time || '17:30',
+      project: entry.project_id || entry.project || defaultProj,
+      title: entry.title || '',
+      remarks: entry.notes || ''
     });
   };
-  const saveEdit = async id => {
-    const net = calcNet(editDraft.start_time, editDraft.end_time, editDraft.lunch_break);
+  const saveEdit = async (id, date) => {
+    const lunch = getLunch(date);
+    const net = calcNet(editDraft.start_time, editDraft.end_time, lunch);
     try {
       await window.sb.from('entries').update({
         hours: net,
@@ -6971,9 +7027,11 @@ function MonthlyView({
         notes: editDraft.remarks,
         start_time: editDraft.start_time,
         end_time: editDraft.end_time,
-        lunch_break: parseFloat(editDraft.lunch_break || 0)
+        lunch_break: parseFloat(lunch || 0)
       }).eq('id', id);
-    } catch (e) {}
+    } catch (e) {
+      console.error(e);
+    }
     setAllEntries(prev => prev.map(e => e.id === id ? {
       ...e,
       hours: net,
@@ -6981,50 +7039,54 @@ function MonthlyView({
       notes: editDraft.remarks,
       start_time: editDraft.start_time,
       end_time: editDraft.end_time,
-      lunch_break: parseFloat(editDraft.lunch_break || 0)
+      lunch_break: parseFloat(lunch || 0)
     } : e));
     setEditingId(null);
   };
   const saveAdd = async date => {
-    const net = calcNet(addDraft.start_time, addDraft.end_time, addDraft.lunch_break);
-    if (!addDraft.title || net <= 0) return;
+    const draft = getDraft(date);
+    const lunch = getLunch(date);
+    const net = calcNet(draft.start_time, draft.end_time, lunch);
+    if (!draft.title || net <= 0) return;
     setSaving(date);
-    const pid = addDraft.project || projects[0]?.id || '';
+    const pid = draft.project || defaultProj;
+    const proj = projects.find(p => p.id === pid);
     const saved = await window.SupaEntries.add(user.id, {
       project: pid,
       type: 'design',
-      title: addDraft.title,
-      notes: addDraft.remarks || '',
+      title: draft.title,
+      notes: draft.remarks || '',
       hours: net,
       date,
-      start_time: addDraft.start_time,
-      end_time: addDraft.end_time,
-      lunch_break: parseFloat(addDraft.lunch_break || 0)
+      start_time: draft.start_time,
+      end_time: draft.end_time,
+      lunch_break: parseFloat(lunch || 0)
     });
-    if (saved) setAllEntries(prev => [...prev, {
-      ...saved,
-      user_id: user.id,
-      date,
-      hours: net,
-      project_id: pid,
-      project_name: projects.find(p => p.id === pid)?.name || pid,
-      title: addDraft.title,
-      notes: addDraft.remarks || '',
-      start_time: addDraft.start_time,
-      end_time: addDraft.end_time,
-      lunch_break: parseFloat(addDraft.lunch_break || 0)
-    }]);
-    setAddDraft({
-      start_time: '08:30',
-      end_time: '17:30',
-      lunch_break: '1.00',
-      project: '',
+    // Only add to state after getting real id (avoids null-id delete bug)
+    if (saved && saved.id) {
+      setAllEntries(prev => [...prev, {
+        ...saved,
+        id: saved.id,
+        user_id: user.id,
+        date,
+        hours: net,
+        project_id: pid,
+        project_name: proj ? proj.name : pid,
+        title: draft.title,
+        notes: draft.remarks || '',
+        start_time: draft.start_time,
+        end_time: draft.end_time,
+        lunch_break: parseFloat(lunch || 0)
+      }]);
+    }
+    setDraft(date, {
       title: '',
       remarks: ''
     });
     setSaving(null);
   };
-  const inStyle = {
+  const monthTotal = allEntries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
+  const inSt = {
     border: '1px solid var(--border)',
     borderRadius: 6,
     padding: '5px 8px',
@@ -7034,6 +7096,19 @@ function MonthlyView({
     fontFamily: 'inherit',
     width: '100%'
   };
+  const LBL = ({
+    children
+  }) => /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: 'var(--text-muted)',
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em',
+      display: 'block',
+      marginBottom: 3
+    }
+  }, children);
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
@@ -7043,7 +7118,7 @@ function MonthlyView({
       borderRadius: 10,
       border: '1px solid var(--border)',
       padding: '12px 18px',
-      marginBottom: 14
+      marginBottom: 12
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
@@ -7053,9 +7128,9 @@ function MonthlyView({
   }, monthRange.label), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
-      gap: 20
+      gap: 24
     }
-  }, [['Days logged', Object.keys(byDate).length], ['Total hours', monthTotal.toFixed(1) + 'h'], ['Entries', allEntries.length]].map(([l, v]) => /*#__PURE__*/React.createElement("div", {
+  }, [['Days logged', Object.keys(byDate).filter(d => byDate[d].length > 0).length], ['Total hours', monthTotal.toFixed(1) + 'h'], ['Entries', allEntries.length]].map(([l, v]) => /*#__PURE__*/React.createElement("div", {
     key: l,
     style: {
       textAlign: 'center'
@@ -7073,64 +7148,68 @@ function MonthlyView({
       textTransform: 'uppercase',
       letterSpacing: '0.05em'
     }
-  }, l))))), loading ? /*#__PURE__*/React.createElement("div", {
+  }, l))))), loading && /*#__PURE__*/React.createElement("div", {
     style: {
       padding: 40,
       textAlign: 'center',
       color: 'var(--text-muted)'
     }
-  }, "Loading...") : Array.from({
+  }, "Loading..."), !loading && Array.from({
     length: daysInMonth
   }, (_, i) => {
-    const dt = new Date(year, month, i + 1);
-    const dStr = dt.toISOString().split('T')[0];
-    const dow = dt.getDay();
-    const isWeekend = dow === 5 || dow === 6;
-    const isToday = dStr === today;
+    const day = i + 1;
+    const dStr = makeDate(day); // FIXED: pure string, no timezone
+    // Get day-of-week by using noon time to avoid DST issues
+    const dt = new Date(`${dStr}T12:00:00`);
+    const dow = dt.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const isWeekend = dow === 5 || dow === 6; // Fri/Sat = UAE weekend
+    const isToday = dStr === todayStr;
     const dayEnt = byDate[dStr] || [];
     const dayTotal = dayEnt.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
-    const isExpanded = expandedDay === dStr;
-    const addNet = calcNet(addDraft.start_time, addDraft.end_time, addDraft.lunch_break);
+    const isExp = expandedDay === dStr;
+    const lunch = getLunch(dStr);
+    const draft = getDraft(dStr);
+    const addNet = calcNet(draft.start_time, draft.end_time, lunch);
     return /*#__PURE__*/React.createElement("div", {
       key: dStr,
       style: {
-        marginBottom: 6,
+        marginBottom: 4,
         borderRadius: 10,
         border: '1px solid var(--border)',
         overflow: 'hidden',
-        background: isWeekend && dayEnt.length === 0 ? 'rgba(0,0,0,0.02)' : 'var(--surface)',
-        opacity: isWeekend && dayEnt.length === 0 ? 0.6 : 1
+        background: 'var(--surface)',
+        opacity: isWeekend && dayEnt.length === 0 ? 0.55 : 1
       }
     }, /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'grid',
-        gridTemplateColumns: '40px 90px 1fr auto',
+        gridTemplateColumns: '44px 100px 1fr auto',
         alignItems: 'center',
         padding: '8px 14px',
+        cursor: 'pointer',
         background: isToday ? 'rgba(16,35,71,0.04)' : isWeekend ? 'rgba(0,0,0,0.02)' : 'transparent',
-        borderBottom: isExpanded ? '1px solid var(--border)' : 'none',
-        cursor: 'pointer'
+        borderBottom: isExp ? '1px solid var(--border)' : 'none'
       },
-      onClick: () => setExpandedDay(isExpanded ? null : dStr)
+      onClick: () => setExpandedDay(isExp ? null : dStr)
     }, /*#__PURE__*/React.createElement("div", {
       style: {
         fontWeight: 700,
-        fontSize: 15,
+        fontSize: 16,
         color: isToday ? 'var(--accent)' : isWeekend ? 'var(--text-muted)' : 'var(--text)'
       }
-    }, ('0' + (i + 1)).slice(-2)), /*#__PURE__*/React.createElement("div", {
+    }, pad(day)), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 12,
         color: 'var(--text-muted)'
       }
-    }, DAYS[dow], isWeekend && ' - Off', isToday && ' - Today'), /*#__PURE__*/React.createElement("div", {
+    }, DAY_ABBR[dow], isToday ? ' Today' : '', isWeekend ? ' Off' : ''), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
         gap: 6,
         flexWrap: 'wrap'
       }
     }, dayEnt.map(e => {
-      const proj = projects.find(p => p.id === (e.project_id || e.project));
+      const p = projects.find(pr => pr.id === (e.project_id || e.project));
       return /*#__PURE__*/React.createElement("span", {
         key: e.id,
         style: {
@@ -7141,7 +7220,7 @@ function MonthlyView({
           color: 'var(--brand-navy)',
           fontWeight: 500
         }
-      }, proj?.code || e.project_name || e.project_id, " ", parseFloat(e.hours || 0).toFixed(1), "h");
+      }, p ? p.code : e.project_name || e.project_id || '?', " ", parseFloat(e.hours || 0).toFixed(1), "h");
     })), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
@@ -7162,9 +7241,9 @@ function MonthlyView({
     }, "WEEK OFF"), /*#__PURE__*/React.createElement("span", {
       style: {
         color: 'var(--text-muted)',
-        fontSize: 12
+        fontSize: 11
       }
-    }, isExpanded ? ' ' : ' '))), isExpanded && /*#__PURE__*/React.createElement("div", {
+    }, isExp ? 'v' : '>'))), isExp && /*#__PURE__*/React.createElement("div", {
       style: {
         padding: '12px 14px'
       }
@@ -7193,129 +7272,124 @@ function MonthlyView({
     }, h)))), /*#__PURE__*/React.createElement("tbody", null, dayEnt.map(entry => {
       const isEd = editingId === entry.id;
       const proj = projects.find(p => p.id === (entry.project_id || entry.project));
-      if (isEd) {
-        const eNet = calcNet(editDraft.start_time, editDraft.end_time, editDraft.lunch_break);
-        return /*#__PURE__*/React.createElement("tr", {
-          key: entry.id,
-          style: {
-            borderTop: '1px solid var(--border)',
-            background: 'rgba(16,35,71,0.02)'
-          }
-        }, /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '5px 6px'
-          }
-        }, /*#__PURE__*/React.createElement("input", {
-          type: "time",
-          style: inStyle,
-          value: editDraft.start_time,
-          onChange: e => setEditDraft(d => ({
-            ...d,
-            start_time: e.target.value
-          }))
-        })), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '5px 6px'
-          }
-        }, /*#__PURE__*/React.createElement("input", {
-          type: "time",
-          style: inStyle,
-          value: editDraft.end_time,
-          onChange: e => setEditDraft(d => ({
-            ...d,
-            end_time: e.target.value
-          }))
-        })), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '5px 6px'
-          }
-        }, /*#__PURE__*/React.createElement("input", {
-          type: "number",
-          step: "0.25",
-          min: "0",
-          style: {
-            ...inStyle,
-            width: 55
-          },
-          value: editDraft.lunch_break,
-          onChange: e => setEditDraft(d => ({
-            ...d,
-            lunch_break: e.target.value
-          }))
-        })), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '5px 6px',
-            fontWeight: 700,
-            color: 'var(--accent)'
-          }
-        }, eNet.toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '5px 6px'
-          }
-        }, /*#__PURE__*/React.createElement("select", {
-          style: inStyle,
-          value: editDraft.project,
-          onChange: e => setEditDraft(d => ({
-            ...d,
-            project: e.target.value
-          }))
-        }, projects.map(p => /*#__PURE__*/React.createElement("option", {
-          key: p.id,
-          value: p.id
-        }, p.name)))), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '5px 6px'
-          }
-        }, /*#__PURE__*/React.createElement("input", {
-          type: "text",
-          style: inStyle,
-          value: editDraft.title,
-          onChange: e => setEditDraft(d => ({
-            ...d,
-            title: e.target.value
-          }))
-        })), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '5px 6px'
-          }
-        }, /*#__PURE__*/React.createElement("input", {
-          type: "text",
-          style: inStyle,
-          value: editDraft.remarks,
-          onChange: e => setEditDraft(d => ({
-            ...d,
-            remarks: e.target.value
-          }))
-        })), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '5px 6px',
-            whiteSpace: 'nowrap'
-          }
-        }, /*#__PURE__*/React.createElement("button", {
-          onClick: () => saveEdit(entry.id),
-          style: {
-            background: 'var(--brand-navy)',
-            color: 'white',
-            border: 'none',
-            padding: '4px 10px',
-            borderRadius: 5,
-            fontSize: 11,
-            cursor: 'pointer',
-            marginRight: 4
-          }
-        }, "Save"), /*#__PURE__*/React.createElement("button", {
-          onClick: () => setEditingId(null),
-          style: {
-            background: 'none',
-            border: '1px solid var(--border)',
-            padding: '4px 8px',
-            borderRadius: 5,
-            fontSize: 11,
-            cursor: 'pointer'
-          }
-        }, "X")));
-      }
-      return /*#__PURE__*/React.createElement("tr", {
+      const eNet = isEd ? calcNet(editDraft.start_time, editDraft.end_time, lunch) : 0;
+      return isEd ? /*#__PURE__*/React.createElement("tr", {
+        key: entry.id,
+        style: {
+          borderTop: '1px solid var(--border)',
+          background: 'rgba(16,35,71,0.02)'
+        }
+      }, /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '5px 6px'
+        }
+      }, /*#__PURE__*/React.createElement("input", {
+        type: "time",
+        style: inSt,
+        value: editDraft.start_time,
+        onChange: e => setEditDraft(d => ({
+          ...d,
+          start_time: e.target.value
+        }))
+      })), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '5px 6px'
+        }
+      }, /*#__PURE__*/React.createElement("input", {
+        type: "time",
+        style: inSt,
+        value: editDraft.end_time,
+        onChange: e => setEditDraft(d => ({
+          ...d,
+          end_time: e.target.value
+        }))
+      })), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '5px 6px'
+        }
+      }, /*#__PURE__*/React.createElement("input", {
+        type: "number",
+        step: "0.25",
+        min: "0",
+        style: {
+          ...inSt,
+          width: 55,
+          textAlign: 'center'
+        },
+        value: lunch,
+        onChange: e => setLunch(dStr, e.target.value)
+      })), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '5px 6px',
+          fontWeight: 700,
+          color: 'var(--accent)'
+        }
+      }, eNet.toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '5px 6px'
+        }
+      }, /*#__PURE__*/React.createElement("select", {
+        style: inSt,
+        value: editDraft.project,
+        onChange: e => setEditDraft(d => ({
+          ...d,
+          project: e.target.value
+        }))
+      }, projects.map(p => /*#__PURE__*/React.createElement("option", {
+        key: p.id,
+        value: p.id
+      }, p.name)))), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '5px 6px'
+        }
+      }, /*#__PURE__*/React.createElement("input", {
+        type: "text",
+        style: inSt,
+        value: editDraft.title,
+        onChange: e => setEditDraft(d => ({
+          ...d,
+          title: e.target.value
+        }))
+      })), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '5px 6px'
+        }
+      }, /*#__PURE__*/React.createElement("input", {
+        type: "text",
+        style: inSt,
+        value: editDraft.remarks || '',
+        onChange: e => setEditDraft(d => ({
+          ...d,
+          remarks: e.target.value
+        }))
+      })), /*#__PURE__*/React.createElement("td", {
+        style: {
+          padding: '5px 6px',
+          whiteSpace: 'nowrap'
+        }
+      }, /*#__PURE__*/React.createElement("button", {
+        onClick: () => saveEdit(entry.id, dStr),
+        style: {
+          background: 'var(--brand-navy)',
+          color: 'white',
+          border: 'none',
+          padding: '4px 10px',
+          borderRadius: 5,
+          fontSize: 11,
+          cursor: 'pointer',
+          marginRight: 4
+        }
+      }, "Save"), /*#__PURE__*/React.createElement("button", {
+        onClick: () => setEditingId(null),
+        style: {
+          background: 'none',
+          border: '1px solid var(--border)',
+          padding: '4px 8px',
+          borderRadius: 5,
+          fontSize: 11,
+          cursor: 'pointer'
+        }
+      }, "X"))) : /*#__PURE__*/React.createElement("tr", {
         key: entry.id,
         style: {
           borderTop: '1px solid var(--border)'
@@ -7348,7 +7422,7 @@ function MonthlyView({
           padding: '7px 10px',
           fontWeight: 500
         }
-      }, proj?.name || entry.project_name || entry.project_id || '-'), /*#__PURE__*/React.createElement("td", {
+      }, proj ? proj.name : entry.project_name || entry.project_id || '-'), /*#__PURE__*/React.createElement("td", {
         style: {
           padding: '7px 10px',
           maxWidth: 200,
@@ -7360,7 +7434,7 @@ function MonthlyView({
         style: {
           padding: '7px 10px',
           color: 'var(--text-muted)',
-          maxWidth: 120,
+          maxWidth: 100,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap'
@@ -7387,12 +7461,12 @@ function MonthlyView({
           background: 'none',
           border: 'none',
           cursor: 'pointer',
-          color: 'var(--text-muted)'
+          color: '#c0392b',
+          padding: '3px 5px',
+          fontSize: 13,
+          fontWeight: 700
         }
-      }, /*#__PURE__*/React.createElement(Icon, {
-        name: "x",
-        size: 11
-      }))));
+      }, "x")));
     }))), /*#__PURE__*/React.createElement("div", {
       style: {
         background: 'rgba(16,35,71,0.03)',
@@ -7403,93 +7477,52 @@ function MonthlyView({
     }, /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr 1fr 70px',
+        gridTemplateColumns: '1fr 1fr 80px 1fr 60px',
         gap: 8,
         marginBottom: 8
       }
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-      style: {
-        fontSize: 9,
-        fontWeight: 700,
-        color: 'var(--text-muted)',
-        display: 'block',
-        marginBottom: 3
-      }
-    }, "START"), /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Start"), /*#__PURE__*/React.createElement("input", {
       type: "time",
-      style: inStyle,
-      value: addDraft.start_time,
-      onChange: e => setAddDraft(d => ({
-        ...d,
+      style: inSt,
+      value: draft.start_time,
+      onChange: e => setDraft(dStr, {
         start_time: e.target.value
-      }))
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-      style: {
-        fontSize: 9,
-        fontWeight: 700,
-        color: 'var(--text-muted)',
-        display: 'block',
-        marginBottom: 3
-      }
-    }, "END"), /*#__PURE__*/React.createElement("input", {
+      })
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "End"), /*#__PURE__*/React.createElement("input", {
       type: "time",
-      style: inStyle,
-      value: addDraft.end_time,
-      onChange: e => setAddDraft(d => ({
-        ...d,
+      style: inSt,
+      value: draft.end_time,
+      onChange: e => setDraft(dStr, {
         end_time: e.target.value
-      }))
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-      style: {
-        fontSize: 9,
-        fontWeight: 700,
-        color: 'var(--text-muted)',
-        display: 'block',
-        marginBottom: 3
-      }
-    }, "LUNCH (hrs)"), /*#__PURE__*/React.createElement("input", {
+      })
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Lunch h"), /*#__PURE__*/React.createElement("input", {
       type: "number",
       step: "0.25",
       min: "0",
-      style: inStyle,
-      value: addDraft.lunch_break,
-      onChange: e => setAddDraft(d => ({
-        ...d,
-        lunch_break: e.target.value
-      }))
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
       style: {
-        fontSize: 9,
-        fontWeight: 700,
-        color: 'var(--text-muted)',
-        display: 'block',
-        marginBottom: 3
-      }
-    }, "PROJECT"), /*#__PURE__*/React.createElement("select", {
-      style: inStyle,
-      value: addDraft.project,
-      onChange: e => setAddDraft(d => ({
-        ...d,
+        ...inSt,
+        textAlign: 'center'
+      },
+      value: lunch,
+      onChange: e => setLunch(dStr, e.target.value)
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Project"), /*#__PURE__*/React.createElement("select", {
+      style: inSt,
+      value: draft.project,
+      onChange: e => setDraft(dStr, {
         project: e.target.value
-      }))
+      })
     }, projects.map(p => /*#__PURE__*/React.createElement("option", {
       key: p.id,
       value: p.id
-    }, p.name)))), /*#__PURE__*/React.createElement("div", {
+    }, p.name)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Net"), /*#__PURE__*/React.createElement("div", {
       style: {
-        display: 'flex',
-        alignItems: 'flex-end'
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        padding: '5px',
+        padding: '5px 4px',
         borderRadius: 6,
-        background: addNet > 0 ? 'rgba(16,35,71,0.08)' : 'var(--surface-muted)',
+        textAlign: 'center',
         fontWeight: 700,
         fontSize: 12,
+        background: addNet > 0 ? 'rgba(16,35,71,0.08)' : 'var(--surface-muted)',
         color: addNet > 0 ? 'var(--brand-navy)' : 'var(--text-muted)',
-        textAlign: 'center',
-        width: '100%',
         border: '1px solid var(--border)'
       }
     }, addNet > 0 ? addNet.toFixed(1) + 'h' : '--'))), /*#__PURE__*/React.createElement("div", {
@@ -7498,49 +7531,31 @@ function MonthlyView({
         gridTemplateColumns: '2fr 1fr auto',
         gap: 8
       }
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-      style: {
-        fontSize: 9,
-        fontWeight: 700,
-        color: 'var(--text-muted)',
-        display: 'block',
-        marginBottom: 3
-      }
-    }, "TASK DESCRIPTION"), /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Task description"), /*#__PURE__*/React.createElement("input", {
       type: "text",
-      style: inStyle,
-      value: addDraft.title,
+      style: inSt,
+      value: draft.title,
       placeholder: "What did you work on?",
-      onChange: e => setAddDraft(d => ({
-        ...d,
+      onChange: e => setDraft(dStr, {
         title: e.target.value
-      }))
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-      style: {
-        fontSize: 9,
-        fontWeight: 700,
-        color: 'var(--text-muted)',
-        display: 'block',
-        marginBottom: 3
-      }
-    }, "REMARKS"), /*#__PURE__*/React.createElement("input", {
+      })
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(LBL, null, "Remarks"), /*#__PURE__*/React.createElement("input", {
       type: "text",
-      style: inStyle,
-      value: addDraft.remarks,
+      style: inSt,
+      value: draft.remarks || '',
       placeholder: "Optional...",
-      onChange: e => setAddDraft(d => ({
-        ...d,
+      onChange: e => setDraft(dStr, {
         remarks: e.target.value
-      }))
+      })
     })), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
         alignItems: 'flex-end',
-        gap: 5
+        gap: 4
       }
     }, /*#__PURE__*/React.createElement("button", {
       onClick: () => saveAdd(dStr),
-      disabled: !!saving || !addDraft.title || addNet <= 0,
+      disabled: !!saving || !draft.title || addNet <= 0,
       style: {
         background: 'var(--brand-navy)',
         color: 'white',
@@ -7549,10 +7564,12 @@ function MonthlyView({
         borderRadius: 7,
         fontSize: 11,
         fontWeight: 600,
-        cursor: 'pointer'
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        opacity: !!saving || !draft.title || addNet <= 0 ? 0.5 : 1
       }
     }, saving === dStr ? '...' : '+ Add'))))));
-  }), /*#__PURE__*/React.createElement("div", {
+  }), !loading && /*#__PURE__*/React.createElement("div", {
     style: {
       background: 'var(--surface)',
       borderRadius: 10,
