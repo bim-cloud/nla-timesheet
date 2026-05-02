@@ -4215,6 +4215,10 @@ function Sidebar({
     label: 'Reports',
     icon: 'chart'
   }, {
+    id: 'timesheets',
+    label: 'Employee Timesheets',
+    icon: 'clock'
+  }, {
     id: 'users',
     label: 'Users & Access',
     icon: 'users'
@@ -8440,6 +8444,594 @@ function AppUsageBreakdown() {
     }, fmt(a.hours)));
   })));
 }
+
+//    Manager: Employee Timesheet Viewer/Editor                  
+function ManagerEmployeeTimesheets() {
+  const [employees, setEmployees] = React.useState([]);
+  const [selected, setSelected] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  React.useEffect(() => {
+    window.SupaProfiles.getAll().then(function (all) {
+      setEmployees(all.filter(function (p) {
+        return p.user_type === 'employee';
+      }));
+      setLoading(false);
+    }).catch(function () {
+      setLoading(false);
+    });
+  }, []);
+  if (selected) {
+    return /*#__PURE__*/React.createElement(EmployeeTimesheetEditor, {
+      emp: selected,
+      onBack: () => setSelected(null)
+    });
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: "content"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 20,
+      flexWrap: 'wrap',
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      margin: 0,
+      fontSize: 18,
+      fontWeight: 600
+    }
+  }, "Employee Timesheets"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: 'var(--text-muted)',
+      marginTop: 3
+    }
+  }, "View and edit entries per employee"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'var(--surface)',
+      borderRadius: 12,
+      border: '1px solid var(--border)',
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("table", {
+    style: {
+      width: '100%',
+      borderCollapse: 'collapse',
+      fontSize: 13
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
+    style: {
+      background: 'var(--surface-muted)',
+      borderBottom: '1px solid var(--border)'
+    }
+  }, ['Employee', 'Role', 'Action'].map(function (h) {
+    return /*#__PURE__*/React.createElement("th", {
+      key: h,
+      style: {
+        padding: '11px 16px',
+        textAlign: 'left',
+        fontWeight: 600,
+        fontSize: 11,
+        textTransform: 'uppercase',
+        letterSpacing: '0.06em',
+        color: 'var(--text-muted)'
+      }
+    }, h);
+  }))), /*#__PURE__*/React.createElement("tbody", null, loading ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: 3,
+    style: {
+      padding: '40px',
+      textAlign: 'center',
+      color: 'var(--text-muted)'
+    }
+  }, "Loading...")) : employees.map(function (emp) {
+    return /*#__PURE__*/React.createElement("tr", {
+      key: emp.id,
+      style: {
+        borderTop: '1px solid var(--border)'
+      }
+    }, /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '12px 16px'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: 34,
+        height: 34,
+        borderRadius: 8,
+        background: 'rgba(16,35,71,0.1)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 11,
+        fontWeight: 700,
+        color: 'var(--brand-navy)',
+        flexShrink: 0
+      }
+    }, emp.initials), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontWeight: 600
+      }
+    }, emp.name))), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '12px 16px',
+        color: 'var(--text-muted)'
+      }
+    }, emp.role), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '12px 16px'
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-sm btn-primary",
+      onClick: function () {
+        setSelected(emp);
+      }
+    }, /*#__PURE__*/React.createElement(Icon, {
+      name: "eye",
+      size: 13
+    }), " View & Edit")));
+  })))));
+}
+function EmployeeTimesheetEditor({
+  emp,
+  onBack
+}) {
+  const [weekOffset, setWeekOffset] = React.useState(0);
+  const [monthOffset, setMonthOffset] = React.useState(0);
+  const [viewMode, setViewMode] = React.useState('week');
+  const [entries, setEntries] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [editingEntry, setEditingEntry] = React.useState(null);
+  const [exporting, setExporting] = React.useState(false);
+  const getWeekDates = React.useCallback(function (offset) {
+    var d = new Date();
+    var day = d.getDay();
+    d.setDate(d.getDate() - day + (day === 0 ? -6 : 1) + (offset || 0) * 7);
+    var from = d.toISOString().split('T')[0];
+    var fri = new Date(d);
+    fri.setDate(d.getDate() + 4);
+    return {
+      from,
+      to: fri.toISOString().split('T')[0]
+    };
+  }, []);
+  var getMonthDates = React.useCallback(function (offset) {
+    var d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + (offset || 0));
+    var from = d.toISOString().split('T')[0];
+    var last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return {
+      from,
+      to: last.toISOString().split('T')[0]
+    };
+  }, []);
+  var getRange = React.useCallback(function () {
+    return viewMode === 'week' ? getWeekDates(weekOffset) : getMonthDates(monthOffset);
+  }, [viewMode, weekOffset, monthOffset]);
+  var fmtRangeLabel = React.useCallback(function () {
+    var r = getRange();
+    var s = new Date(r.from + 'T00:00:00');
+    if (viewMode === 'week') {
+      var e = new Date(r.to + 'T00:00:00');
+      var prefix = weekOffset === 0 ? 'This week - ' : weekOffset === -1 ? 'Last week - ' : Math.abs(weekOffset) + ' weeks ago - ';
+      return prefix + s.toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short'
+      }) + ' - ' + e.toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+    }
+    return s.toLocaleDateString('en-GB', {
+      month: 'long',
+      year: 'numeric'
+    });
+  }, [viewMode, weekOffset, monthOffset]);
+  React.useEffect(function () {
+    setLoading(true);
+    var r = getRange();
+    window.SupaEntries.teamSummary(r.from, r.to).then(function (all) {
+      setEntries(all.filter(function (e) {
+        return e.user_id === emp.id;
+      }).sort(function (a, b) {
+        return a.date.localeCompare(b.date);
+      }));
+      setLoading(false);
+    }).catch(function () {
+      setLoading(false);
+    });
+  }, [emp.id, viewMode, weekOffset, monthOffset]);
+  var totalHours = entries.reduce(function (s, e) {
+    return s + parseFloat(e.hours || 0);
+  }, 0);
+  var saveEntry = async function (entry, newHours, newTitle) {
+    try {
+      await window.sb.from('entries').update({
+        hours: parseFloat(newHours),
+        title: newTitle
+      }).eq('id', entry.id);
+      setEntries(function (prev) {
+        return prev.map(function (e) {
+          return e.id === entry.id ? {
+            ...e,
+            hours: parseFloat(newHours),
+            title: newTitle
+          } : e;
+        });
+      });
+      setEditingEntry(null);
+    } catch (err) {
+      console.error('Save entry error:', err);
+    }
+  };
+  var exportLogSheet = async function () {
+    setExporting(true);
+    try {
+      if (window.exportEmployeeLogSheet) {
+        await window.exportEmployeeLogSheet(emp, viewMode === 'month' ? monthOffset : 0);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setExporting(false);
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "content"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: onBack,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      color: 'var(--text-muted)',
+      fontSize: 13,
+      marginBottom: 20,
+      padding: 0
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "chevronL",
+    size: 14
+  }), " Back to Employee Timesheets"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'var(--surface)',
+      borderRadius: 12,
+      border: '1px solid var(--border)',
+      padding: '18px 22px',
+      marginBottom: 16,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 16,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 46,
+      height: 46,
+      borderRadius: 10,
+      background: 'rgba(16,35,71,0.1)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: 15,
+      fontWeight: 700,
+      color: 'var(--brand-navy)',
+      flexShrink: 0
+    }
+  }, emp.initials), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      margin: '0 0 2px',
+      fontSize: 17,
+      fontWeight: 600
+    }
+  }, emp.name), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: 'var(--text-muted)'
+    }
+  }, emp.role, " \xB7 @", emp.username)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      alignItems: 'center',
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      background: 'var(--surface-muted)',
+      borderRadius: 7,
+      padding: 2
+    }
+  }, [['week', 'Week'], ['month', 'Month']].map(function (v) {
+    return /*#__PURE__*/React.createElement("button", {
+      key: v[0],
+      onClick: function () {
+        setViewMode(v[0]);
+        setWeekOffset(0);
+        setMonthOffset(0);
+      },
+      style: {
+        padding: '4px 12px',
+        borderRadius: 5,
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: 12,
+        background: viewMode === v[0] ? 'white' : 'transparent',
+        fontWeight: viewMode === v[0] ? 600 : 400,
+        color: viewMode === v[0] ? 'var(--text)' : 'var(--text-muted)',
+        boxShadow: viewMode === v[0] ? '0 0 0 0.5px var(--border)' : 'none'
+      }
+    }, v[1]);
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm",
+    onClick: function () {
+      viewMode === 'week' ? setWeekOffset(function (w) {
+        return w - 1;
+      }) : setMonthOffset(function (m) {
+        return m - 1;
+      });
+    }
+  }, "\u2190"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm",
+    style: {
+      fontSize: 11
+    },
+    onClick: function () {
+      viewMode === 'week' ? setWeekOffset(0) : setMonthOffset(0);
+    }
+  }, viewMode === 'week' ? 'This week' : 'This month'), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm",
+    disabled: viewMode === 'week' && weekOffset >= 0 || viewMode === 'month' && monthOffset >= 0,
+    onClick: function () {
+      viewMode === 'week' ? setWeekOffset(function (w) {
+        return w + 1;
+      }) : setMonthOffset(function (m) {
+        return m + 1;
+      });
+    }
+  }, "\u2192"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm",
+    onClick: exportLogSheet,
+    disabled: exporting,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 5,
+      background: 'var(--brand-navy)',
+      color: 'white',
+      border: 'none'
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "download",
+    size: 13
+  }), " ", exporting ? 'Exporting...' : 'Export Log Sheet'))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3,1fr)',
+      gap: 12,
+      marginBottom: 16
+    }
+  }, [['Period', fmtRangeLabel()], ['Total hours', totalHours.toFixed(2) + 'h'], ['Entries', entries.length + ' entries']].map(function (s) {
+    return /*#__PURE__*/React.createElement("div", {
+      key: s[0],
+      style: {
+        background: 'var(--surface)',
+        borderRadius: 10,
+        border: '1px solid var(--border)',
+        padding: '12px 16px'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        letterSpacing: '0.06em',
+        color: 'var(--text-muted)',
+        marginBottom: 5
+      }
+    }, s[0]), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 18,
+        fontWeight: 700,
+        color: 'var(--text)',
+        fontVariantNumeric: 'tabular-nums'
+      }
+    }, s[1]));
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'var(--surface)',
+      borderRadius: 12,
+      border: '1px solid var(--border)',
+      overflow: 'hidden'
+    }
+  }, /*#__PURE__*/React.createElement("table", {
+    style: {
+      width: '100%',
+      borderCollapse: 'collapse',
+      fontSize: 13
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
+    style: {
+      background: 'var(--surface-muted)',
+      borderBottom: '1px solid var(--border)'
+    }
+  }, ['Date', 'Project', 'Task / Description', 'Hours', 'Status', 'Actions'].map(function (h) {
+    return /*#__PURE__*/React.createElement("th", {
+      key: h,
+      style: {
+        padding: '11px 14px',
+        textAlign: 'left',
+        fontWeight: 600,
+        fontSize: 11,
+        textTransform: 'uppercase',
+        letterSpacing: '0.06em',
+        color: 'var(--text-muted)'
+      }
+    }, h);
+  }))), /*#__PURE__*/React.createElement("tbody", null, loading ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: 6,
+    style: {
+      padding: '40px',
+      textAlign: 'center',
+      color: 'var(--text-muted)'
+    }
+  }, "Loading...")) : entries.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: 6,
+    style: {
+      padding: '40px',
+      textAlign: 'center',
+      color: 'var(--text-muted)'
+    }
+  }, "No entries in this period.")) : entries.map(function (entry) {
+    var isEditing = editingEntry && editingEntry.id === entry.id;
+    return /*#__PURE__*/React.createElement("tr", {
+      key: entry.id,
+      style: {
+        borderTop: '1px solid var(--border)',
+        background: isEditing ? 'rgba(16,35,71,0.02)' : 'transparent'
+      }
+    }, /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '10px 14px',
+        color: 'var(--text-muted)',
+        whiteSpace: 'nowrap'
+      }
+    }, new Date(entry.date + 'T00:00:00').toLocaleDateString('en-GB', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short'
+    })), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '10px 14px',
+        fontWeight: 500,
+        color: 'var(--text)'
+      }
+    }, entry.project_name || entry.project_id), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '10px 14px',
+        color: 'var(--text-muted)',
+        maxWidth: 280
+      }
+    }, isEditing ? /*#__PURE__*/React.createElement("input", {
+      defaultValue: entry.title || '',
+      id: "title-" + entry.id,
+      style: {
+        width: '100%',
+        border: '1px solid var(--accent)',
+        borderRadius: 6,
+        padding: '5px 8px',
+        fontSize: 12,
+        background: 'var(--surface)'
+      }
+    }) : entry.title || '-'), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '10px 14px',
+        fontWeight: 700,
+        color: 'var(--accent)',
+        fontVariantNumeric: 'tabular-nums'
+      }
+    }, isEditing ? /*#__PURE__*/React.createElement("input", {
+      defaultValue: parseFloat(entry.hours).toFixed(2),
+      id: "hours-" + entry.id,
+      type: "number",
+      step: "0.25",
+      min: "0",
+      max: "24",
+      style: {
+        width: 70,
+        border: '1px solid var(--accent)',
+        borderRadius: 6,
+        padding: '5px 8px',
+        fontSize: 12,
+        background: 'var(--surface)'
+      }
+    }) : parseFloat(entry.hours).toFixed(2) + 'h'), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '10px 14px'
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        padding: '2px 8px',
+        borderRadius: 20,
+        fontSize: 11,
+        fontWeight: 600,
+        background: entry.status === 'approved' ? 'rgba(29,138,74,0.1)' : entry.status === 'submitted' ? 'rgba(180,140,30,0.1)' : 'var(--surface-muted)',
+        color: entry.status === 'approved' ? '#1d8a4a' : entry.status === 'submitted' ? '#a87220' : 'var(--text-muted)'
+      }
+    }, (entry.status || 'draft').charAt(0).toUpperCase() + (entry.status || 'draft').slice(1))), /*#__PURE__*/React.createElement("td", {
+      style: {
+        padding: '10px 14px'
+      }
+    }, isEditing ? /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 6
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-sm btn-primary",
+      onClick: function () {
+        var h = document.getElementById('hours-' + entry.id);
+        var t = document.getElementById('title-' + entry.id);
+        saveEntry(entry, h ? h.value : entry.hours, t ? t.value : entry.title);
+      }
+    }, "Save"), /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-sm",
+      onClick: function () {
+        setEditingEntry(null);
+      }
+    }, "Cancel")) : /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-sm",
+      onClick: function () {
+        setEditingEntry(entry);
+      },
+      style: {
+        fontSize: 11
+      }
+    }, "Edit")));
+  })), !loading && entries.length > 0 && /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", {
+    style: {
+      background: 'rgba(16,35,71,0.04)',
+      borderTop: '2px solid var(--border)'
+    }
+  }, /*#__PURE__*/React.createElement("td", {
+    colSpan: 3,
+    style: {
+      padding: '10px 14px',
+      fontWeight: 600,
+      fontSize: 12,
+      color: 'var(--text-muted)'
+    }
+  }, "TOTAL"), /*#__PURE__*/React.createElement("td", {
+    style: {
+      padding: '10px 14px',
+      fontWeight: 700,
+      color: 'var(--accent)',
+      fontVariantNumeric: 'tabular-nums'
+    }
+  }, totalHours.toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
+    colSpan: 2
+  }))))));
+}
+window.ManagerEmployeeTimesheets = ManagerEmployeeTimesheets;
 function ManagerView({
   activeNav
 }) {
@@ -8559,7 +9151,7 @@ function ManagerView({
     style: {
       marginBottom: 12
     }
-  }, "Team summary   this week"), /*#__PURE__*/React.createElement(ManagerStats, null)))), nav === 'activity' && window.ActivityMonitor && React.createElement(window.ActivityMonitor), nav === 'users' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, "Team summary   this week"), /*#__PURE__*/React.createElement(ManagerStats, null)))), nav === 'activity' && window.ActivityMonitor && React.createElement(window.ActivityMonitor), nav === 'timesheets' && window.ManagerEmployeeTimesheets && React.createElement(window.ManagerEmployeeTimesheets), nav === 'users' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "section-title",
     style: {
       marginTop: 0
@@ -9511,6 +10103,485 @@ function TeamExportButtons() {
     onExport: opts => doExport('pdf', opts)
   }));
 }
+
+// ============================================================
+// NLA Employee Log Sheet Export (matches Engisoft style)
+// ============================================================
+async function exportEmployeeLogSheet(user, monthOffset, opts) {
+  monthOffset = monthOffset || 0;
+  opts = opts || {};
+  const XLSX = window.XLSX;
+  const NLA_NAVY = 'FF102347';
+  const NLA_GOLD = 'FFC9A84C';
+  const NLA_WHITE = 'FFFFFFFF';
+  const NLA_LIGHT = 'FFE8EDF4';
+  const NLA_ORANGE = 'FFFFB347'; // For highlighted columns like Engisoft
+
+  // Date range for the month
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + monthOffset);
+  const year = d.getFullYear();
+  const month = d.getMonth();
+  const from = new Date(year, month, 1).toISOString().split('T')[0];
+  const last = new Date(year, month + 1, 0);
+  const to = last.toISOString().split('T')[0];
+  const monthLabel = d.toLocaleDateString('en-GB', {
+    month: 'long',
+    year: 'numeric'
+  });
+  const daysInMonth = last.getDate();
+
+  // Fetch entries
+  let entries = [];
+  if (window.SupaEntries && window.SupaEntries.teamSummary) {
+    const all = await window.SupaEntries.teamSummary(from, to);
+    entries = all.filter(function (e) {
+      return e.user_id === user.id;
+    });
+  }
+
+  // Group entries by date
+  var byDate = {};
+  entries.forEach(function (e) {
+    if (!byDate[e.date]) byDate[e.date] = [];
+    byDate[e.date].push(e);
+  });
+
+  // Get primary project for the month
+  var projCount = {};
+  entries.forEach(function (e) {
+    var pk = e.project_name || e.project_id || '-';
+    projCount[pk] = (projCount[pk] || 0) + parseFloat(e.hours || 0);
+  });
+  var primaryProject = Object.keys(projCount).sort(function (a, b) {
+    return projCount[b] - projCount[a];
+  })[0] || '-';
+
+  // Helper: format time from hour float
+  var fmtTime = function (h) {
+    if (!h) return '';
+    var hh = Math.floor(h);
+    var mm = Math.round((h - hh) * 60);
+    return (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+  };
+  var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var dayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  // Build worksheet data
+  var wsData = [];
+
+  // ROW 1: Company header (merged)
+  wsData.push(['NATURE LANDSCAPE ARCHITECTS', '', '', '', '', '', '', '', '', '', '', '']);
+  wsData.push(['NLA Timesheet - Employee Log Sheet', '', '', '', '', '', '', '', '', '', '', '']);
+  wsData.push(['']);
+
+  // ROW: Employee info
+  wsData.push(['Name:', user.name || '', '', 'Project Name:', primaryProject, '', '', '', '', '', '', '']);
+  wsData.push(['Designation:', user.role || '', '', 'Site Name:', primaryProject, '', '', '', '', '', '', '']);
+  wsData.push(['Period:', monthLabel, '', 'Generated:', new Date().toLocaleDateString('en-GB'), '', '', '', '', '', '', '']);
+  wsData.push(['']);
+
+  // ROW: LOG SHEET banner
+  wsData.push(['', '', '', '', '', '', '', 'LOG SHEET', '', '', '', '']);
+  wsData.push(['']);
+
+  // ROW: Column headers (matching Engisoft layout)
+  var headers = ['DATE', 'DAY', 'START', 'END', 'TOTAL HRS', 'LUNCH BREAK', 'Total HRS\n(excl. Lunch)', 'HOURS', 'MINUTES', 'PROJECT NAME', 'TASK UNDERTAKEN IN DETAIL', 'REMARK'];
+  wsData.push(headers);
+
+  // ROW: Data rows - one per day of month
+  var totalHrs = 0;
+  var totalHrsExcl = 0;
+  var totalMins = 0;
+  for (var day = 1; day <= daysInMonth; day++) {
+    var dateObj = new Date(year, month, day);
+    var dateStr = dateObj.toISOString().split('T')[0];
+    var dayName = days[dateObj.getDay()];
+    var isWeekend = dateObj.getDay() === 5 || dateObj.getDay() === 6; // Fri/Sat
+
+    var dayEntries = byDate[dateStr] || [];
+    var dayHrs = dayEntries.reduce(function (s, e) {
+      return s + parseFloat(e.hours || 0);
+    }, 0);
+    var lunchBreak = dayHrs > 5 ? 1 : 0;
+    var hrsExcl = Math.max(0, dayHrs - lunchBreak);
+    var mins = Math.round((hrsExcl - Math.floor(hrsExcl)) * 60);
+    var projName = dayEntries.length > 0 ? dayEntries[0].project_name || dayEntries[0].project_id || '-' : '';
+    var taskDetail = dayEntries.map(function (e) {
+      return e.title || '';
+    }).filter(Boolean).join(', ');
+    if (dayHrs > 0) {
+      totalHrs += dayHrs;
+      totalHrsExcl += hrsExcl;
+      totalMins += mins;
+    }
+    var dateFormatted = ('0' + day).slice(-2) + '/' + ('0' + (month + 1)).slice(-2) + '/' + String(year).slice(-2);
+    if (isWeekend && dayHrs === 0) {
+      wsData.push([dateFormatted, dayName, '-', '-', '-', '-', '-', '-', '-', '', '', 'WEEK OFF']);
+    } else if (dayHrs === 0) {
+      wsData.push([dateFormatted, dayName, '-', '-', '-', '-', '-', '-', '-', '', '', '']);
+    } else {
+      // Estimate start/end from 8:30 base
+      var startTime = '8:30';
+      var endHr = 8.5 + dayHrs;
+      var endTime = fmtTime(endHr);
+      wsData.push([dateFormatted, dayName, startTime, endTime, dayHrs.toFixed(2), lunchBreak.toFixed(2), hrsExcl.toFixed(2), Math.floor(hrsExcl).toString(), ('0' + mins).slice(-2), projName, taskDetail, '']);
+    }
+  }
+
+  // Totals row
+  wsData.push(['', '', '', 'TOTAL', '', '', totalHrsExcl.toFixed(2), Math.floor(totalHrsExcl).toString(), ('0' + totalMins % 60).slice(-2), '', '', '']);
+  wsData.push(['']);
+
+  // Signature rows
+  wsData.push(['Authorized Signatory and Stamp', '', '', '', '', '', 'Employee Signature', '', '', '', '', '']);
+  wsData.push(['Name:', '', '', '', '', '', user.name || '', '', '', '', '', '']);
+  wsData.push(['Position:', '', '', '', '', '', user.role || '', '', '', '', '', '']);
+
+  // Create worksheet
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Column widths (matching Engisoft proportions)
+  ws['!cols'] = [{
+    wch: 12
+  },
+  // DATE
+  {
+    wch: 12
+  },
+  // DAY
+  {
+    wch: 8
+  },
+  // START
+  {
+    wch: 8
+  },
+  // END
+  {
+    wch: 10
+  },
+  // TOTAL HRS
+  {
+    wch: 12
+  },
+  // LUNCH BREAK
+  {
+    wch: 14
+  },
+  // Total HRS excl
+  {
+    wch: 8
+  },
+  // HOURS
+  {
+    wch: 8
+  },
+  // MINUTES
+  {
+    wch: 20
+  },
+  // PROJECT NAME
+  {
+    wch: 40
+  },
+  // TASK UNDERTAKEN IN DETAIL
+  {
+    wch: 15
+  } // REMARK
+  ];
+
+  // Merges
+  var merges = [
+  // Company name
+  {
+    s: {
+      r: 0,
+      c: 0
+    },
+    e: {
+      r: 0,
+      c: 11
+    }
+  }, {
+    s: {
+      r: 1,
+      c: 0
+    },
+    e: {
+      r: 1,
+      c: 11
+    }
+  },
+  // LOG SHEET banner (row 8 = index 8)
+  {
+    s: {
+      r: 8,
+      c: 0
+    },
+    e: {
+      r: 8,
+      c: 11
+    }
+  }];
+  ws['!merges'] = merges;
+
+  // Apply styles using XLSX cell object approach
+  var headerRow = 9; // LOG SHEET row is 8, headers at row 9
+  var dataStartRow = 10;
+
+  // Style all cells
+  var range = XLSX.utils.decode_range(ws['!ref']);
+  for (var R = range.s.r; R <= range.e.r; R++) {
+    for (var C = range.s.c; C <= range.e.c; C++) {
+      var cellAddr = XLSX.utils.encode_cell({
+        r: R,
+        c: C
+      });
+      if (!ws[cellAddr]) ws[cellAddr] = {
+        v: '',
+        t: 's'
+      };
+      if (!ws[cellAddr].s) ws[cellAddr].s = {};
+
+      // Company header rows (0-1)
+      if (R === 0) {
+        ws[cellAddr].s = {
+          font: {
+            name: 'Calibri',
+            sz: 16,
+            bold: true,
+            color: {
+              rgb: NLA_WHITE
+            }
+          },
+          fill: {
+            fgColor: {
+              rgb: NLA_NAVY
+            }
+          },
+          alignment: {
+            horizontal: 'center',
+            vertical: 'center',
+            wrapText: true
+          },
+          border: {}
+        };
+      } else if (R === 1) {
+        ws[cellAddr].s = {
+          font: {
+            name: 'Calibri',
+            sz: 11,
+            color: {
+              rgb: 'FFC9A84C'
+            }
+          },
+          fill: {
+            fgColor: {
+              rgb: NLA_NAVY
+            }
+          },
+          alignment: {
+            horizontal: 'center',
+            vertical: 'center'
+          },
+          border: {}
+        };
+      }
+      // Info rows (3-5)
+      else if (R >= 3 && R <= 5) {
+        var isLabel = C === 0 || C === 3;
+        ws[cellAddr].s = {
+          font: {
+            name: 'Calibri',
+            sz: 10,
+            bold: isLabel
+          },
+          fill: {
+            fgColor: {
+              rgb: NLA_LIGHT
+            }
+          },
+          alignment: {
+            horizontal: 'left',
+            vertical: 'center'
+          },
+          border: {
+            bottom: {
+              style: 'thin',
+              color: {
+                rgb: 'FFD0D7E0'
+              }
+            }
+          }
+        };
+      }
+      // LOG SHEET banner (row 8)
+      else if (R === 8) {
+        ws[cellAddr].s = {
+          font: {
+            name: 'Calibri',
+            sz: 14,
+            bold: true,
+            color: {
+              rgb: NLA_NAVY
+            }
+          },
+          fill: {
+            fgColor: {
+              rgb: NLA_GOLD
+            }
+          },
+          alignment: {
+            horizontal: 'center',
+            vertical: 'center'
+          },
+          border: {
+            top: {
+              style: 'medium',
+              color: {
+                rgb: NLA_NAVY
+              }
+            },
+            bottom: {
+              style: 'medium',
+              color: {
+                rgb: NLA_NAVY
+              }
+            }
+          }
+        };
+      }
+      // Header row (row 9)
+      else if (R === 9) {
+        // Columns 7,8 (HOURS, MINUTES) get gold - the "DO NOT CHANGE" columns
+        var isHighlight = C >= 7 && C <= 8;
+        ws[cellAddr].s = {
+          font: {
+            name: 'Calibri',
+            sz: 9,
+            bold: true,
+            color: {
+              rgb: isHighlight ? NLA_NAVY : NLA_WHITE
+            }
+          },
+          fill: {
+            fgColor: {
+              rgb: isHighlight ? NLA_GOLD : NLA_NAVY
+            }
+          },
+          alignment: {
+            horizontal: 'center',
+            vertical: 'center',
+            wrapText: true
+          },
+          border: {
+            top: {
+              style: 'medium',
+              color: {
+                rgb: NLA_NAVY
+              }
+            },
+            bottom: {
+              style: 'medium',
+              color: {
+                rgb: NLA_NAVY
+              }
+            },
+            left: {
+              style: 'thin',
+              color: {
+                rgb: 'FF6B7F9A'
+              }
+            },
+            right: {
+              style: 'thin',
+              color: {
+                rgb: 'FF6B7F9A'
+              }
+            }
+          }
+        };
+      }
+      // Data rows
+      else if (R >= dataStartRow) {
+        var isEven = (R - dataStartRow) % 2 === 0;
+        var isHighlightCol = C >= 7 && C <= 8;
+        var isTotalRow = ws[cellAddr] && ws[cellAddr].v === 'TOTAL';
+        var isWeekendRow = ws[cellAddr] && ws[cellAddr].v === 'WEEK OFF';
+        var bgColor = isHighlightCol ? 'FFFFF8DC' : isEven ? NLA_WHITE : 'FFF8F9FB';
+        if (isTotalRow || R > range.e.r - 6) {
+          bgColor = NLA_LIGHT;
+        }
+        ws[cellAddr].s = {
+          font: {
+            name: 'Calibri',
+            sz: 9,
+            bold: C === 0 || isTotalRow,
+            color: {
+              rgb: isWeekendRow ? 'FF999999' : '00102347'
+            }
+          },
+          fill: {
+            fgColor: {
+              rgb: bgColor
+            }
+          },
+          alignment: {
+            horizontal: C <= 1 ? 'center' : C >= 7 ? 'center' : 'left',
+            vertical: 'center'
+          },
+          border: {
+            bottom: {
+              style: 'hair',
+              color: {
+                rgb: 'FFD0D7E0'
+              }
+            },
+            left: {
+              style: 'thin',
+              color: {
+                rgb: 'FFD0D7E0'
+              }
+            },
+            right: {
+              style: 'thin',
+              color: {
+                rgb: 'FFD0D7E0'
+              }
+            }
+          }
+        };
+      }
+    }
+  }
+
+  // Row heights
+  ws['!rows'] = Array.from({
+    length: range.e.r + 1
+  }, function (_, i) {
+    if (i === 0) return {
+      hpt: 28
+    };
+    if (i === 1) return {
+      hpt: 18
+    };
+    if (i === 8) return {
+      hpt: 24
+    };
+    if (i === 9) return {
+      hpt: 30
+    };
+    return {
+      hpt: 18
+    };
+  });
+  XLSX.utils.book_append_sheet(wb, ws, monthLabel);
+  XLSX.writeFile(wb, 'NLA_LogSheet_' + (user.name || user.username).replace(/\s+/g, '_') + '_' + String(year) + ('0' + (month + 1)).slice(-2) + '.xlsx');
+}
+window.exportEmployeeLogSheet = exportEmployeeLogSheet;
 window.ExportButtons = ExportButtons;
 window.TeamExportButtons = TeamExportButtons;
 window.exportToExcel = exportToExcel;
