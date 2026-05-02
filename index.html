@@ -6270,16 +6270,33 @@ function WeeklyView({
   const [loading, setLoading] = useStateEmp(true);
   const [editingId, setEditingId] = useStateEmp(null);
   const [editDraft, setEditDraft] = useStateEmp({});
-  const [showAddFor, setShowAddFor] = useStateEmp(null); // date string
-  const [addDraft, setAddDraft] = useStateEmp({
+  const [showAddFor, setShowAddFor] = useStateEmp(null);
+  // Per-day add drafts - keyed by date string
+  const [addDrafts, setAddDrafts] = useStateEmp({});
+  // Per-day lunch break - keyed by date string
+  const [dayLunch, setDayLunch] = useStateEmp({});
+  const [saving, setSaving] = useStateEmp(null);
+  const projects = window.DATA.PROJECTS || [];
+  const defaultProject = projects[0]?.id || '';
+  const getDraft = date => addDrafts[date] || {
     start_time: '08:30',
     end_time: '17:30',
-    lunch_break: '1.00',
-    project: '',
+    project: defaultProject,
     title: '',
     remarks: ''
-  });
-  const [saving, setSaving] = useStateEmp(false);
+  };
+  const setDraft = (date, updates) => setAddDrafts(prev => ({
+    ...prev,
+    [date]: {
+      ...getDraft(date),
+      ...updates
+    }
+  }));
+  const getLunch = date => dayLunch[date] !== undefined ? dayLunch[date] : '1.00';
+  const setLunch = (date, val) => setDayLunch(prev => ({
+    ...prev,
+    [date]: val
+  }));
   const calcNet = (start, end, lunch) => {
     if (!start || !end) return 0;
     const toH = t => {
@@ -6305,46 +6322,51 @@ function WeeklyView({
   });
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const removeEntry = async id => {
-    setWeekEntries(prev => prev.filter(e => e.id !== id));
-    await window.SupaEntries.remove(id);
+    setWeekEntries(prev => prev.filter(e => String(e.id) !== String(id)));
+    try {
+      await window.SupaEntries.remove(id);
+    } catch (err) {
+      console.error('Delete error:', err);
+    }
   };
   const saveAdd = async date => {
-    const net = calcNet(addDraft.start_time, addDraft.end_time, addDraft.lunch_break);
-    if (!addDraft.title || net <= 0) return;
+    const draft = getDraft(date);
+    const lunch = getLunch(date);
+    const net = calcNet(draft.start_time, draft.end_time, lunch);
+    if (!draft.title || net <= 0) return;
     setSaving(date);
+    const pid = draft.project || defaultProject;
+    const proj = projects.find(p => p.id === pid);
     const saved = await window.SupaEntries.add(user.id, {
-      project: addDraft.project || (window.DATA.PROJECTS || [])[0]?.id || '',
+      project: pid,
       type: 'design',
-      title: addDraft.title,
-      notes: addDraft.remarks || '',
+      title: draft.title,
+      notes: draft.remarks || '',
       hours: net,
       date,
-      start_time: addDraft.start_time,
-      end_time: addDraft.end_time,
-      lunch_break: parseFloat(addDraft.lunch_break || 0)
+      start_time: draft.start_time,
+      end_time: draft.end_time,
+      lunch_break: parseFloat(lunch || 0)
     });
     if (saved) setWeekEntries(prev => [...prev, {
       ...saved,
       user_id: user.id,
       date,
       hours: net,
-      project_id: addDraft.project,
-      project_name: (window.DATA.PROJECTS || []).find(p => p.id === addDraft.project)?.name || addDraft.project,
-      title: addDraft.title,
-      notes: addDraft.remarks || '',
-      start_time: addDraft.start_time,
-      end_time: addDraft.end_time,
-      lunch_break: parseFloat(addDraft.lunch_break || 0)
+      project_id: pid,
+      project_name: proj?.name || pid,
+      title: draft.title,
+      notes: draft.remarks || '',
+      start_time: draft.start_time,
+      end_time: draft.end_time,
+      lunch_break: parseFloat(lunch || 0)
     }]);
-    setShowAddFor(null);
-    setAddDraft({
-      start_time: '08:30',
-      end_time: '17:30',
-      lunch_break: '1.00',
-      project: '',
+    // Clear only this day's draft title/task (keep times for convenience)
+    setDraft(date, {
       title: '',
       remarks: ''
     });
+    setShowAddFor(null);
     setSaving(null);
   };
   const startEdit = e => {
@@ -6352,14 +6374,14 @@ function WeeklyView({
     setEditDraft({
       start_time: e.start_time || '08:30',
       end_time: e.end_time || '17:30',
-      lunch_break: String(e.lunch_break || '1.00'),
-      project: e.project_id || e.project || '',
+      project: e.project_id || e.project || defaultProject,
       title: e.title || '',
       remarks: e.notes || ''
     });
   };
-  const saveEdit = async id => {
-    const net = calcNet(editDraft.start_time, editDraft.end_time, editDraft.lunch_break);
+  const saveEdit = async (id, date) => {
+    const lunch = getLunch(date);
+    const net = calcNet(editDraft.start_time, editDraft.end_time, lunch);
     try {
       await window.sb.from('entries').update({
         hours: net,
@@ -6367,7 +6389,7 @@ function WeeklyView({
         notes: editDraft.remarks,
         start_time: editDraft.start_time,
         end_time: editDraft.end_time,
-        lunch_break: parseFloat(editDraft.lunch_break || 0)
+        lunch_break: parseFloat(lunch || 0)
       }).eq('id', id);
     } catch (e) {}
     setWeekEntries(prev => prev.map(e => e.id === id ? {
@@ -6377,12 +6399,11 @@ function WeeklyView({
       notes: editDraft.remarks,
       start_time: editDraft.start_time,
       end_time: editDraft.end_time,
-      lunch_break: parseFloat(editDraft.lunch_break || 0)
+      lunch_break: parseFloat(lunch || 0)
     } : e));
     setEditingId(null);
   };
   const grandTotal = weekEntries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
-  const projects = window.DATA.PROJECTS || [];
   const inStyle = {
     border: '1px solid var(--border)',
     borderRadius: 6,
@@ -6393,26 +6414,37 @@ function WeeklyView({
     fontFamily: 'inherit',
     width: '100%'
   };
-  const th = (label, center) => /*#__PURE__*/React.createElement("th", {
-    key: label,
+  const lbl = text => /*#__PURE__*/React.createElement("label", {
     style: {
-      padding: '10px 12px',
-      fontSize: 10,
+      fontSize: 9,
       fontWeight: 700,
-      textTransform: 'uppercase',
-      letterSpacing: '0.06em',
       color: 'var(--text-muted)',
-      textAlign: center ? 'center' : 'left',
-      background: 'var(--surface-muted)',
-      borderBottom: '2px solid var(--border)',
-      whiteSpace: 'nowrap'
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em',
+      display: 'block',
+      marginBottom: 3
     }
-  }, label);
+  }, text);
+  const thStyle = {
+    padding: '9px 12px',
+    fontSize: 10,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    color: 'var(--text-muted)',
+    textAlign: 'left',
+    background: 'var(--surface-muted)',
+    borderBottom: '2px solid var(--border)',
+    whiteSpace: 'nowrap'
+  };
   return /*#__PURE__*/React.createElement("div", null, weekDates.map((date, dayIdx) => {
     const dayEntries = byDate[date] || [];
     const dayTotal = dayEntries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
     const isToday = date === new Date().toISOString().split('T')[0];
-    const addNet = calcNet(addDraft.start_time, addDraft.end_time, addDraft.lunch_break);
+    const draft = getDraft(date);
+    const lunch = getLunch(date);
+    const addNet = calcNet(draft.start_time, draft.end_time, lunch);
+    const isAddOpen = showAddFor === date;
     return /*#__PURE__*/React.createElement("div", {
       key: date,
       style: {
@@ -6462,16 +6494,47 @@ function WeeklyView({
       style: {
         display: 'flex',
         alignItems: 'center',
-        gap: 8
+        gap: 12
       }
-    }, dayTotal > 0 && /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        color: 'var(--text-muted)',
+        whiteSpace: 'nowrap'
+      }
+    }, "Lunch break:"), /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      step: "0.25",
+      min: "0",
+      max: "3",
+      value: lunch,
+      onChange: e => setLunch(date, e.target.value),
+      style: {
+        ...inStyle,
+        width: 65,
+        textAlign: 'center',
+        padding: '4px 6px'
+      },
+      title: "Lunch break applies to all entries on this day"
+    }), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        color: 'var(--text-muted)'
+      }
+    }, "h")), dayTotal > 0 && /*#__PURE__*/React.createElement("span", {
       style: {
         fontWeight: 700,
         fontSize: 13,
         color: 'var(--accent)'
       }
     }, dayTotal.toFixed(2), "h"), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setShowAddFor(showAddFor === date ? null : date),
+      onClick: () => setShowAddFor(isAddOpen ? null : date),
       className: "btn btn-sm",
       style: {
         background: 'var(--brand-navy)',
@@ -6479,7 +6542,7 @@ function WeeklyView({
         border: 'none',
         fontSize: 11
       }
-    }, "+ Add entry"))), showAddFor === date && /*#__PURE__*/React.createElement("div", {
+    }, isAddOpen ? '- Cancel' : '+ Add entry'))), isAddOpen && /*#__PURE__*/React.createElement("div", {
       style: {
         padding: '12px 16px',
         background: 'rgba(16,35,71,0.02)',
@@ -6488,94 +6551,53 @@ function WeeklyView({
     }, /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr 1fr 90px',
+        gridTemplateColumns: '1fr 1fr 90px 1fr 80px',
         gap: 8,
         marginBottom: 8
       }
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-      style: {
-        fontSize: 10,
-        fontWeight: 600,
-        color: 'var(--text-muted)',
-        display: 'block',
-        marginBottom: 3
-      }
-    }, "START"), /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("div", null, lbl('Start time'), /*#__PURE__*/React.createElement("input", {
       type: "time",
       style: inStyle,
-      value: addDraft.start_time,
-      onChange: e => setAddDraft(d => ({
-        ...d,
+      value: draft.start_time,
+      onChange: e => setDraft(date, {
         start_time: e.target.value
-      }))
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-      style: {
-        fontSize: 10,
-        fontWeight: 600,
-        color: 'var(--text-muted)',
-        display: 'block',
-        marginBottom: 3
-      }
-    }, "END"), /*#__PURE__*/React.createElement("input", {
+      })
+    })), /*#__PURE__*/React.createElement("div", null, lbl('End time'), /*#__PURE__*/React.createElement("input", {
       type: "time",
       style: inStyle,
-      value: addDraft.end_time,
-      onChange: e => setAddDraft(d => ({
-        ...d,
+      value: draft.end_time,
+      onChange: e => setDraft(date, {
         end_time: e.target.value
-      }))
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      })
+    })), /*#__PURE__*/React.createElement("div", null, lbl('Lunch (h)'), /*#__PURE__*/React.createElement("div", {
       style: {
-        fontSize: 10,
+        padding: '5px 8px',
+        borderRadius: 6,
+        background: 'rgba(16,35,71,0.06)',
         fontWeight: 600,
-        color: 'var(--text-muted)',
-        display: 'block',
-        marginBottom: 3
+        fontSize: 13,
+        textAlign: 'center',
+        border: '1px solid var(--border)',
+        color: 'var(--brand-navy)'
       }
-    }, "LUNCH (hrs)"), /*#__PURE__*/React.createElement("input", {
-      type: "number",
-      step: "0.25",
-      min: "0",
-      max: "3",
+    }, getLunch(date), "h")), /*#__PURE__*/React.createElement("div", null, lbl('Project'), /*#__PURE__*/React.createElement("select", {
       style: inStyle,
-      value: addDraft.lunch_break,
-      onChange: e => setAddDraft(d => ({
-        ...d,
-        lunch_break: e.target.value
-      }))
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-      style: {
-        fontSize: 10,
-        fontWeight: 600,
-        color: 'var(--text-muted)',
-        display: 'block',
-        marginBottom: 3
-      }
-    }, "PROJECT"), /*#__PURE__*/React.createElement("select", {
-      style: inStyle,
-      value: addDraft.project,
-      onChange: e => setAddDraft(d => ({
-        ...d,
+      value: draft.project,
+      onChange: e => setDraft(date, {
         project: e.target.value
-      }))
+      })
     }, projects.map(p => /*#__PURE__*/React.createElement("option", {
       key: p.id,
       value: p.id
-    }, p.name)))), /*#__PURE__*/React.createElement("div", {
+    }, p.name)))), /*#__PURE__*/React.createElement("div", null, lbl('Net hours'), /*#__PURE__*/React.createElement("div", {
       style: {
-        display: 'flex',
-        alignItems: 'flex-end'
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        padding: '5px 10px',
+        padding: '5px 8px',
         borderRadius: 6,
         background: addNet > 0 ? 'rgba(16,35,71,0.08)' : 'var(--surface-muted)',
         fontWeight: 700,
         fontSize: 13,
         color: addNet > 0 ? 'var(--brand-navy)' : 'var(--text-muted)',
         textAlign: 'center',
-        width: '100%',
         border: '1px solid var(--border)'
       }
     }, addNet > 0 ? addNet.toFixed(2) + 'h' : '--'))), /*#__PURE__*/React.createElement("div", {
@@ -6584,40 +6606,23 @@ function WeeklyView({
         gridTemplateColumns: '2fr 1fr auto',
         gap: 8
       }
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-      style: {
-        fontSize: 10,
-        fontWeight: 600,
-        color: 'var(--text-muted)',
-        display: 'block',
-        marginBottom: 3
-      }
-    }, "TASK DESCRIPTION"), /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("div", null, lbl('Task description'), /*#__PURE__*/React.createElement("input", {
       type: "text",
       style: inStyle,
-      value: addDraft.title,
+      value: draft.title,
       placeholder: "What did you work on?",
-      onChange: e => setAddDraft(d => ({
-        ...d,
+      onChange: e => setDraft(date, {
         title: e.target.value
-      }))
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-      style: {
-        fontSize: 10,
-        fontWeight: 600,
-        color: 'var(--text-muted)',
-        display: 'block',
-        marginBottom: 3
-      }
-    }, "REMARKS"), /*#__PURE__*/React.createElement("input", {
+      }),
+      onKeyDown: e => e.key === 'Enter' && saveAdd(date)
+    })), /*#__PURE__*/React.createElement("div", null, lbl('Remarks'), /*#__PURE__*/React.createElement("input", {
       type: "text",
       style: inStyle,
-      value: addDraft.remarks,
+      value: draft.remarks || '',
       placeholder: "Optional...",
-      onChange: e => setAddDraft(d => ({
-        ...d,
+      onChange: e => setDraft(date, {
         remarks: e.target.value
-      }))
+      })
     })), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
@@ -6626,7 +6631,7 @@ function WeeklyView({
       }
     }, /*#__PURE__*/React.createElement("button", {
       onClick: () => saveAdd(date),
-      disabled: !!saving || !addDraft.title || addNet <= 0,
+      disabled: saving === date || !draft.title || addNet <= 0,
       style: {
         background: 'var(--brand-navy)',
         color: 'white',
@@ -6636,21 +6641,12 @@ function WeeklyView({
         fontSize: 12,
         fontWeight: 600,
         cursor: 'pointer',
-        whiteSpace: 'nowrap'
+        whiteSpace: 'nowrap',
+        opacity: saving === date || !draft.title || addNet <= 0 ? 0.5 : 1
       }
-    }, saving === date ? 'Saving...' : 'Add'), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setShowAddFor(null),
+    }, saving === date ? 'Saving...' : 'Add')))), dayEntries.length === 0 && !isAddOpen && /*#__PURE__*/React.createElement("div", {
       style: {
-        background: 'none',
-        border: '1px solid var(--border)',
-        padding: '7px 12px',
-        borderRadius: 7,
-        fontSize: 12,
-        cursor: 'pointer'
-      }
-    }, "Cancel")))), dayEntries.length === 0 && showAddFor !== date && /*#__PURE__*/React.createElement("div", {
-      style: {
-        padding: '14px 16px',
+        padding: '12px 16px',
         color: 'var(--text-muted)',
         fontSize: 12,
         textAlign: 'center'
@@ -6661,11 +6657,19 @@ function WeeklyView({
         borderCollapse: 'collapse',
         fontSize: 12
       }
-    }, dayIdx === 0 && /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, th('Start', true), th('End', true), th('Lunch', true), th('Net Hrs', true), th('Project'), th('Task Description'), th('Remarks'), th(''))), /*#__PURE__*/React.createElement("tbody", null, dayEntries.map((entry, i) => {
+    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
+      style: {
+        background: 'var(--surface-muted)',
+        borderBottom: '1px solid var(--border)'
+      }
+    }, ['Start', 'End', 'Net Hrs', 'Project', 'Task Description', 'Remarks', ''].map(h => /*#__PURE__*/React.createElement("th", {
+      key: h,
+      style: thStyle
+    }, h)))), /*#__PURE__*/React.createElement("tbody", null, dayEntries.map((entry, i) => {
       const isEd = editingId === entry.id;
       const proj = projects.find(p => p.id === (entry.project_id || entry.project));
       if (isEd) {
-        const eNet = calcNet(editDraft.start_time, editDraft.end_time, editDraft.lunch_break);
+        const eNet = calcNet(editDraft.start_time, editDraft.end_time, getLunch(date));
         return /*#__PURE__*/React.createElement("tr", {
           key: entry.id,
           style: {
@@ -6698,30 +6702,18 @@ function WeeklyView({
           }))
         })), /*#__PURE__*/React.createElement("td", {
           style: {
-            padding: '6px 8px'
-          }
-        }, /*#__PURE__*/React.createElement("input", {
-          type: "number",
-          step: "0.25",
-          min: "0",
-          style: {
-            ...inStyle,
-            width: 65,
-            textAlign: 'center'
-          },
-          value: editDraft.lunch_break,
-          onChange: e => setEditDraft(d => ({
-            ...d,
-            lunch_break: e.target.value
-          }))
-        })), /*#__PURE__*/React.createElement("td", {
-          style: {
-            padding: '6px 8px',
-            textAlign: 'center',
+            padding: '6px 12px',
             fontWeight: 700,
-            color: 'var(--accent)'
+            color: 'var(--accent)',
+            textAlign: 'center'
           }
-        }, eNet.toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
+        }, eNet.toFixed(2), "h", /*#__PURE__*/React.createElement("div", {
+          style: {
+            fontSize: 9,
+            color: 'var(--text-muted)',
+            marginTop: 2
+          }
+        }, "Lunch: ", getLunch(date), "h")), /*#__PURE__*/React.createElement("td", {
           style: {
             padding: '6px 8px'
           }
@@ -6754,7 +6746,7 @@ function WeeklyView({
         }, /*#__PURE__*/React.createElement("input", {
           type: "text",
           style: inStyle,
-          value: editDraft.remarks,
+          value: editDraft.remarks || '',
           onChange: e => setEditDraft(d => ({
             ...d,
             remarks: e.target.value
@@ -6765,7 +6757,7 @@ function WeeklyView({
             whiteSpace: 'nowrap'
           }
         }, /*#__PURE__*/React.createElement("button", {
-          onClick: () => saveEdit(entry.id),
+          onClick: () => saveEdit(entry.id, date),
           style: {
             background: 'var(--brand-navy)',
             color: 'white',
@@ -6797,57 +6789,30 @@ function WeeklyView({
       }, /*#__PURE__*/React.createElement("td", {
         style: {
           padding: '9px 12px',
-          textAlign: 'center',
           fontFamily: 'var(--font-mono)',
           color: 'var(--text-muted)'
         }
       }, entry.start_time || '08:30'), /*#__PURE__*/React.createElement("td", {
         style: {
           padding: '9px 12px',
-          textAlign: 'center',
           fontFamily: 'var(--font-mono)',
           color: 'var(--text-muted)'
         }
       }, entry.end_time || '17:30'), /*#__PURE__*/React.createElement("td", {
         style: {
           padding: '9px 12px',
-          textAlign: 'center',
-          color: 'var(--text-muted)'
-        }
-      }, parseFloat(entry.lunch_break || 1).toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
-        style: {
-          padding: '9px 12px',
-          textAlign: 'center',
           fontWeight: 700,
-          color: 'var(--accent)'
+          color: 'var(--accent)',
+          textAlign: 'center'
         }
       }, parseFloat(entry.hours || 0).toFixed(2), "h"), /*#__PURE__*/React.createElement("td", {
         style: {
-          padding: '9px 12px'
+          padding: '9px 12px',
+          fontWeight: 500
         }
-      }, /*#__PURE__*/React.createElement("div", {
-        style: {
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6
-        }
-      }, /*#__PURE__*/React.createElement("div", {
-        style: {
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          background: proj?.color || 'var(--brand-navy)',
-          flexShrink: 0
-        }
-      }), /*#__PURE__*/React.createElement("span", {
-        style: {
-          fontWeight: 500,
-          color: 'var(--text)'
-        }
-      }, proj?.name || entry.project_name || entry.project_id || '-'))), /*#__PURE__*/React.createElement("td", {
+      }, proj?.name || entry.project_name || entry.project_id || '-'), /*#__PURE__*/React.createElement("td", {
         style: {
           padding: '9px 12px',
-          color: 'var(--text)',
           maxWidth: 240,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -6901,7 +6866,8 @@ function WeeklyView({
       padding: '12px 20px',
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'space-between'
+      justifyContent: 'space-between',
+      marginTop: 4
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
@@ -6977,8 +6943,13 @@ function MonthlyView({
   const projects = window.DATA.PROJECTS || [];
   const monthTotal = allEntries.reduce((s, e) => s + parseFloat(e.hours || 0), 0);
   const removeEntry = async id => {
-    setAllEntries(prev => prev.filter(e => e.id !== id));
-    await window.SupaEntries.remove(id);
+    // Optimistic update first
+    setAllEntries(prev => prev.filter(e => String(e.id) !== String(id)));
+    try {
+      await window.SupaEntries.remove(id);
+    } catch (err) {
+      console.error('Delete error:', err);
+    }
   };
   const startEdit = e => {
     setEditingId(e.id);
@@ -9735,6 +9706,7 @@ function ReviewModal({
 }
 function AddProjectButton() {
   const [open, setOpen] = React.useState(false);
+  const [editProj, setEditProj] = React.useState(null); // project to edit
   const [form, setForm] = React.useState({
     name: '',
     code: '',
@@ -9743,34 +9715,59 @@ function AddProjectButton() {
   });
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState('');
-  const submit = e => {
-    e.preventDefault();
-    if (!form.name || !form.code) return;
-    setSaving(true);
-    const newProj = {
-      id: form.code.toLowerCase().replace(/\s+/g, '-'),
-      ...form
-    };
-    const existing = window.DATA.PROJECTS || [];
-    if (!existing.find(p => p.id === newProj.id)) {
-      window.DATA.PROJECTS = [...existing, newProj];
-    }
-    setMsg('Project added! Refresh to see it in dropdowns.');
+  const openAdd = () => {
+    setEditProj(null);
     setForm({
       name: '',
       code: '',
       client: '',
       color: '#102347'
     });
+    setOpen(true);
+  };
+  const openEdit = proj => {
+    setEditProj(proj);
+    setForm({
+      name: proj.name,
+      code: proj.code,
+      client: proj.client || '',
+      color: proj.color || '#102347'
+    });
+    setOpen(true);
+  };
+  const submit = e => {
+    e.preventDefault();
+    if (!form.name || !form.code) return;
+    setSaving(true);
+    const existing = window.DATA.PROJECTS || [];
+    if (editProj) {
+      // Update existing
+      window.DATA.PROJECTS = existing.map(p => p.id === editProj.id ? {
+        ...p,
+        ...form
+      } : p);
+      setMsg('Project updated!');
+    } else {
+      // Add new
+      const newProj = {
+        id: form.code.toLowerCase().replace(/\s+/g, '-'),
+        ...form
+      };
+      if (!existing.find(p => p.id === newProj.id)) {
+        window.DATA.PROJECTS = [...existing, newProj];
+      }
+      setMsg('Project added!');
+    }
     setSaving(false);
     setTimeout(() => {
       setMsg('');
       setOpen(false);
-    }, 2000);
+    }, 1500);
   };
+  const projects = window.DATA.PROJECTS || [];
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     className: "btn btn-sm btn-primary",
-    onClick: () => setOpen(true)
+    onClick: openAdd
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "plus",
     size: 14
@@ -9781,7 +9778,7 @@ function AddProjectButton() {
     className: "modal-card",
     onClick: e => e.stopPropagation(),
     style: {
-      maxWidth: 440,
+      maxWidth: 480,
       marginTop: 80,
       background: 'var(--surface)',
       borderRadius: 14
@@ -9789,14 +9786,26 @@ function AddProjectButton() {
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       padding: '18px 24px 14px',
-      borderBottom: '1px solid var(--border)'
+      borderBottom: '1px solid var(--border)',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center'
     }
   }, /*#__PURE__*/React.createElement("h3", {
     style: {
       margin: 0,
       fontSize: 15
     }
-  }, "Add new project")), /*#__PURE__*/React.createElement("form", {
+  }, editProj ? 'Edit project' : 'Add new project'), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setOpen(false),
+    style: {
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: 18,
+      color: 'var(--text-muted)'
+    }
+  }, "x")), /*#__PURE__*/React.createElement("form", {
     onSubmit: submit,
     style: {
       padding: '20px 24px'
@@ -9813,7 +9822,7 @@ function AddProjectButton() {
   }, msg), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
+      gridTemplateColumns: '2fr 1fr',
       gap: 12,
       marginBottom: 12
     }
@@ -9843,10 +9852,10 @@ function AddProjectButton() {
     required: true
   })), /*#__PURE__*/React.createElement("div", {
     className: "field"
-  }, /*#__PURE__*/React.createElement("label", null, "Client"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("label", null, "Client name"), /*#__PURE__*/React.createElement("input", {
     type: "text",
     className: "input",
-    placeholder: "Client name",
+    placeholder: "e.g. Emaar",
     value: form.client,
     onChange: e => setForm({
       ...form,
@@ -9880,7 +9889,69 @@ function AddProjectButton() {
     type: "submit",
     className: "btn btn-primary",
     disabled: saving || !form.name || !form.code
-  }, saving ? 'Adding...' : 'Add project'))))));
+  }, saving ? 'Saving...' : editProj ? 'Save changes' : 'Add project'))), !editProj && projects.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      borderTop: '1px solid var(--border)',
+      padding: '14px 24px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      fontWeight: 600,
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
+      color: 'var(--text-muted)',
+      marginBottom: 10
+    }
+  }, "Existing projects - click to edit"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 6
+    }
+  }, projects.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p.id,
+    onClick: () => openEdit(p),
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      padding: '8px 12px',
+      borderRadius: 8,
+      border: '1px solid var(--border)',
+      cursor: 'pointer',
+      background: 'var(--surface-muted)'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 10,
+      height: 10,
+      borderRadius: 2,
+      background: p.color || '#102347',
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 600,
+      fontSize: 13,
+      flex: 1
+    }
+  }, p.name), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: 'var(--text-muted)'
+    }
+  }, p.code), p.client && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: 'var(--text-muted)'
+    }
+  }, p.client), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: 'var(--accent)'
+    }
+  }, "Edit"))))))));
 }
 function ProjectHours() {
   const [totals, setTotals] = React.useState([]);
@@ -12368,6 +12439,10 @@ async function exportEmployeeLogSheet(user, monthOffset) {
   var primaryProj = Object.keys(projCount).sort(function (a, b) {
     return projCount[b] - projCount[a];
   })[0] || '-';
+  var primaryProjData = (window.DATA.PROJECTS || []).find(function (p) {
+    return p.name === primaryProj || p.id === primaryProj;
+  });
+  var primaryClient = primaryProjData ? primaryProjData.client || '' : '';
   var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   if (!window.ExcelJS) {
     // Fallback XLSX
