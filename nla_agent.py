@@ -1,13 +1,12 @@
 """
-NLA Activity Agent v2.0
+NLA Desktop Helper v3.0
 Nature Landscape Architects
 
-Tracks active application usage (Revit, AutoCAD, Teams, etc.)
-and syncs to the NLA Timesheet dashboard via Supabase.
+Captures application usage and project context for productivity insights.
 
 Build to .exe:
     pip install pywin32 pynput pystray Pillow requests psutil pyinstaller
-    pyinstaller --onefile --noconsole --name "NLA Activity Agent" nla_agent.py
+    pyinstaller --onefile --noconsole --name "NLA Helper" nla_agent.py
 
 Requirements: Windows 10/11
 """
@@ -17,14 +16,15 @@ import json
 import threading
 import os
 import sys
+import re
 import ctypes
 import datetime
 from collections import defaultdict
 
 import requests
 
-# ── Platform guards ──────────────────────────────────────────────────────────
-IS_WINDOWS = sys.platform == 'win32'
+# - Platform guards -
+IS_WINDOWS = sys.platform == "win32"
 
 if IS_WINDOWS:
     try:
@@ -33,7 +33,7 @@ if IS_WINDOWS:
         HAS_WIN32 = True
     except ImportError:
         HAS_WIN32 = False
-        print("[NLA Agent] WARNING: pywin32 not found. Run: pip install pywin32")
+        print("[NLA Helper] WARNING: pywin32 not found. Run: pip install pywin32")
     try:
         import psutil
         HAS_PSUTIL = True
@@ -44,27 +44,27 @@ if IS_WINDOWS:
         HAS_PYNPUT = True
     except ImportError:
         HAS_PYNPUT = False
-        print("[NLA Agent] WARNING: pynput not found. Run: pip install pynput")
+        print("[NLA Helper] WARNING: pynput not found. Run: pip install pynput")
     try:
         import pystray
         from PIL import Image, ImageDraw
         HAS_TRAY = True
     except ImportError:
         HAS_TRAY = False
-        print("[NLA Agent] WARNING: pystray/Pillow not found. Run: pip install pystray Pillow")
+        print("[NLA Helper] WARNING: pystray/Pillow not found. Run: pip install pystray Pillow")
     try:
         import tkinter as tk
         from tkinter import ttk, messagebox
         HAS_TK = True
     except ImportError:
         HAS_TK = False
-        print("[NLA Agent] WARNING: tkinter not available")
+        print("[NLA Helper] WARNING: tkinter not available")
 else:
     HAS_WIN32 = HAS_PYNPUT = HAS_TRAY = HAS_TK = False
     HAS_PSUTIL = False
-    print("[NLA Agent] Running in non-Windows mode (no tracking)")
+    print("[NLA Helper] Running in non-Windows mode (no detection)")
 
-# ── Configuration ─────────────────────────────────────────────────────────────
+# - Configuration -
 SUPABASE_URL  = "https://tddegqxozgdnottitzeq.supabase.co"
 SUPABASE_KEY  = "sb_publishable_svk_tc3SIHy7e5yL2n3gYA_cH9yTvPg"
 DASHBOARD_URL = "https://nla-timesheet-5jc7.vercel.app"
@@ -72,13 +72,15 @@ DASHBOARD_URL = "https://nla-timesheet-5jc7.vercel.app"
 SYNC_INTERVAL    = 300   # seconds between Supabase syncs (5 min)
 IDLE_THRESHOLD   = 120   # seconds of no input = idle
 SAMPLE_RATE      = 5     # seconds between window checks
-AGENT_VERSION    = "2.0"
+AGENT_VERSION    = "3.0"
 
-CONFIG_DIR  = os.path.join(os.environ.get("APPDATA", "."), "NLA_Agent")
+CONFIG_DIR  = os.path.join(os.environ.get("APPDATA", "."), "NLA_Helper")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
-LOG_FILE    = os.path.join(CONFIG_DIR, "agent.log")
+LOG_FILE    = os.path.join(CONFIG_DIR, "helper.log")
 
-# ── App detection map ─────────────────────────────────────────────────────────
+# - BIM apps category vs Other -
+BIM_APPS = {"revit", "acad", "navisworks", "civil3d", "sketchup", "rhino"}
+
 APP_PATTERNS = {
     "revit":      ["revit"],
     "acad":       ["autocad", "acad.exe"],
@@ -112,39 +114,150 @@ APP_LABELS = {
     "other":      "Other",
 }
 
-# ── Global state ──────────────────────────────────────────────────────────────
+# File extensions per app for project detection
+APP_EXTENSIONS = {
+    "revit":      [".rvt", ".rfa", ".rte", ".rft"],
+    "acad":       [".dwg", ".dxf", ".dwt"],
+    "navisworks": [".nwd", ".nwf", ".nwc"],
+    "civil3d":    [".dwg"],
+    "sketchup":   [".skp"],
+    "rhino":      [".3dm"],
+}
+
+# - Global state -
 state = {
-    "user_id":      None,
-    "username":     None,
-    "name":         None,
-    "running":      False,
-    "idle":         False,
-    "last_input":   time.time(),
-    "current_app":  "other",
-    "focus_secs":   defaultdict(int),
-    "last_sync":    time.time(),
-    "status":       "Stopped",
-    "tray_icon":    None,
-    "sync_count":   0,
-    "start_time":   None,
+    "user_id":         None,
+    "username":        None,
+    "name":            None,
+    "running":         False,
+    "idle":            False,
+    "last_input":      time.time(),
+    "current_app":     "other",
+    "current_project": None,
+    "current_doc":     None,
+    "session_data":    defaultdict(lambda: {"seconds": 0, "doc": None, "project": None}),
+    "last_sync":       time.time(),
+    "status":          "Stopped",
+    "tray_icon":       None,
+    "sync_count":      0,
+    "start_time":      None,
+    "projects":        [],  # cached project list from dashboard
 }
 lock = threading.Lock()
 
 
-# ── Logging ───────────────────────────────────────────────────────────────────
+# - Logging -
 def log(msg):
-    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"[{ts}] {msg}"
-    print(line)
     try:
         os.makedirs(CONFIG_DIR, exist_ok=True)
         with open(LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
+            f.write(f"[{datetime.datetime.now().isoformat()}] {msg}\n")
     except Exception:
         pass
 
 
-# ── Supabase helpers ──────────────────────────────────────────────────────────
+# - Project detection from window title -
+def fetch_projects():
+    """Fetch project list from Supabase (we use the projects table or fallback)."""
+    # Since projects are stored in localStorage of the dashboard, we use a known set
+    # In production, this would come from a /projects table. For now, use cached list.
+    try:
+        # Try to read from a projects.json the dashboard might publish
+        r = requests.get(f"{DASHBOARD_URL}/projects.json", timeout=5)
+        if r.ok:
+            return r.json()
+    except Exception:
+        pass
+    return []
+
+
+def extract_project_from_title(title: str, app_key: str):
+    """Parse window title to find project name and document.
+    
+    Examples:
+      Revit:  "Autodesk Revit 2024 - [Dubai_Creek_Harbor_F09.rvt - 3D View: ...]"
+      AutoCAD: "AutoCAD 2024 - [DCH-F09 Site Plan.dwg]"
+      SketchUp: "Untitled - SketchUp Pro 2023" or "MyProject.skp - SketchUp"
+      Navisworks: "Navisworks Manage 2024 - [Project.nwd]"
+    """
+    if not title:
+        return None, None
+
+    # Find document name by extension
+    doc_name = None
+    extensions = APP_EXTENSIONS.get(app_key, [])
+    for ext in extensions:
+        # Match "filename.ext" - take the longest sensible match
+        pattern = r"([A-Za-z0-9_\-\s\.\(\)]+" + re.escape(ext) + r")"
+        m = re.search(pattern, title, re.IGNORECASE)
+        if m:
+            doc_name = m.group(1).strip()
+            # Trim leading [ if present
+            doc_name = doc_name.lstrip("[").strip()
+            break
+
+    if not doc_name:
+        # SketchUp special case: title sometimes is just "ProjectName - SketchUp Pro"
+        if app_key == "sketchup" and " - SketchUp" in title:
+            doc_name = title.split(" - SketchUp")[0].strip()
+
+    # Match doc name against known projects
+    project_match = None
+    if doc_name and state["projects"]:
+        doc_lower = doc_name.lower()
+        for p in state["projects"]:
+            code = (p.get("code") or "").lower()
+            name = (p.get("name") or "").lower()
+            # Fuzzy match: project code or name appears in document name
+            if code and code in doc_lower:
+                project_match = p
+                break
+            if name and any(part in doc_lower for part in name.split() if len(part) > 3):
+                project_match = p
+                break
+
+    return doc_name, project_match
+
+
+def get_active_window_info():
+    """Returns (app_key, title, doc_name, project_dict)."""
+    if not IS_WINDOWS or not HAS_WIN32:
+        return "other", "", None, None
+    try:
+        hwnd = win32gui.GetForegroundWindow()
+        if not hwnd:
+            return "other", "", None, None
+        title = win32gui.GetWindowText(hwnd)
+        title_lower = title.lower()
+        exe = ""
+        if HAS_PSUTIL:
+            try:
+                _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                proc = psutil.Process(pid)
+                exe = proc.name().lower()
+            except Exception:
+                pass
+        combined = title_lower + " " + exe
+        app_key = "other"
+        for key, patterns in APP_PATTERNS.items():
+            for p in patterns:
+                if p in combined:
+                    app_key = key
+                    break
+            if app_key != "other":
+                break
+
+        doc_name, project = None, None
+        if app_key in BIM_APPS:
+            doc_name, project = extract_project_from_title(title, app_key)
+
+        return app_key, title, doc_name, project
+    except Exception as e:
+        log(f"window detection error: {e}")
+        return "other", "", None, None
+
+
+# - Supabase API -
 def sb_headers():
     return {
         "apikey":        SUPABASE_KEY,
@@ -154,47 +267,57 @@ def sb_headers():
     }
 
 
-def sb_login(username: str, password: str):
+def sb_login(email: str, password: str):
     try:
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/profiles",
-            headers=sb_headers(),
-            params={
-                "username": f"eq.{username.lower()}",
-                "select":   "id,name,username,password,user_type",
-            },
+        r = requests.post(
+            f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
+            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+            json={"email": email, "password": password},
             timeout=10,
         )
-        if not r.ok:
-            return None, f"Server error ({r.status_code}). Check your connection."
-        data = r.json()
-        if not data:
-            return None, "No account found with that username."
-        user = data[0]
-        if user.get("password") != password:
-            return None, "Incorrect password."
-        if user.get("user_type") == "manager":
-            return None, "Manager accounts cannot run the agent. Use an employee account."
-        return user, None
+        if r.ok:
+            data = r.json()
+            return {
+                "id":       data["user"]["id"],
+                "email":    data["user"]["email"],
+                "username": data["user"]["email"].split("@")[0],
+                "name":     data["user"].get("user_metadata", {}).get("name") or data["user"]["email"].split("@")[0],
+                "token":    data["access_token"],
+            }, None
+        return None, "Invalid email or password"
     except requests.exceptions.ConnectionError:
         return None, "Cannot connect to server. Check your internet connection."
     except Exception as e:
         return None, f"Connection error: {e}"
 
 
-def sb_sync(user_id: str, focus_snapshot: dict) -> bool:
+def sb_sync(user_id: str, sessions: list) -> bool:
+    """Sync detailed session records to app_usage table.
+    
+    Each session is: {app_key, seconds, doc, project_id, project_name, started_at}
+    """
+    if not sessions:
+        return True
+
     today = datetime.date.today().isoformat()
-    rows = [
-        {
-            "user_id":       user_id,
-            "date":          today,
-            "app_key":       app_key,
-            "focus_seconds": seconds,
-            "sampled_at":    datetime.datetime.utcnow().isoformat() + "Z",
-        }
-        for app_key, seconds in focus_snapshot.items()
-        if seconds > 0
-    ]
+    rows = []
+    for s in sessions:
+        if s["seconds"] <= 0:
+            continue
+        app_key = s["app_key"]
+        category = "BIM Apps" if app_key in BIM_APPS else "Other"
+        rows.append({
+            "user_id":          user_id,
+            "date":             today,
+            "app_name":         APP_LABELS.get(app_key, app_key),
+            "app_category":    category,
+            "project_id":       s.get("project_id"),
+            "project_name":     s.get("project_name"),
+            "document_name":    s.get("doc"),
+            "start_time":       s.get("started_at"),
+            "duration_seconds": s["seconds"],
+        })
+
     if not rows:
         return True
     try:
@@ -205,10 +328,11 @@ def sb_sync(user_id: str, focus_snapshot: dict) -> bool:
             timeout=15,
         )
         if r.ok:
-            log(f"Synced {len(rows)} app records ({sum(s['focus_seconds'] for s in rows)}s total)")
+            total_secs = sum(row["duration_seconds"] for row in rows)
+            log(f"Synced {len(rows)} session records ({total_secs}s)")
             return True
         else:
-            log(f"Sync failed: {r.status_code} {r.text[:100]}")
+            log(f"Sync failed: {r.status_code} {r.text[:200]}")
             return False
     except Exception as e:
         log(f"Sync error: {e}")
@@ -223,7 +347,7 @@ def sb_upsert_profile(user: dict):
             headers={**sb_headers(), "Prefer": "return=minimal"},
             params={"id": f"eq.{user['id']}"},
             json={
-                "agent_version": AGENT_VERSION,
+                "agent_version":   AGENT_VERSION,
                 "agent_last_seen": datetime.datetime.utcnow().isoformat() + "Z",
             },
             timeout=10,
@@ -237,106 +361,118 @@ def heartbeat_loop():
     while state["running"]:
         if state["user_id"]:
             sb_upsert_profile({"id": state["user_id"]})
-        time.sleep(300)  # Every 5 minutes
+        time.sleep(300)
 
 
-# ── Window detection ──────────────────────────────────────────────────────────
-def get_active_app() -> str:
-    if not IS_WINDOWS or not HAS_WIN32:
-        return "other"
-    try:
-        hwnd = win32gui.GetForegroundWindow()
-        if not hwnd:
-            return "other"
-        title = win32gui.GetWindowText(hwnd).lower()
-        exe = ""
-        if HAS_PSUTIL:
-            try:
-                _, pid = win32process.GetWindowThreadProcessId(hwnd)
-                proc = psutil.Process(pid)
-                exe = proc.name().lower()
-            except Exception:
-                pass
-        combined = title + " " + exe
-        for key, patterns in APP_PATTERNS.items():
-            for p in patterns:
-                if p in combined:
-                    return key
-        return "other"
-    except Exception:
-        return "other"
-
-
-# ── Input tracking ────────────────────────────────────────────────────────────
+# - Input tracking -
 def on_input(*_):
     state["last_input"] = time.time()
 
 
-# ── Main tracking loop ────────────────────────────────────────────────────────
+# - Main detection loop -
 def tracking_loop():
-    log(f"Tracking started for {state['name']} ({state['username']})")
+    log(f"Helper started for {state['name']}")
     state["start_time"] = time.time()
+
+    # Refresh projects list every 30 minutes
+    last_proj_fetch = 0
+
+    # Track current session: when app/project changes, close prior session and open new
+    current_session = None  # {app_key, doc, project_id, project_name, started_at, seconds}
 
     while state["running"]:
         now = time.time()
+
+        # Refresh projects cache
+        if now - last_proj_fetch >= 1800:
+            state["projects"] = fetch_projects() or state["projects"]
+            last_proj_fetch = now
+
         idle_secs = now - state["last_input"]
         state["idle"] = idle_secs > IDLE_THRESHOLD
 
         if not state["idle"]:
-            app = get_active_app()
-            state["current_app"] = app
-            with lock:
-                state["focus_secs"][app] += SAMPLE_RATE
+            app_key, title, doc, proj = get_active_window_info()
+            state["current_app"] = app_key
+            state["current_doc"] = doc
+            state["current_project"] = proj["name"] if proj else None
+
+            proj_id = proj["id"] if proj else None
+            proj_name = proj["name"] if proj else None
+
+            # Session continuity: if app/doc/project unchanged, just add seconds
+            if (current_session and
+                current_session["app_key"] == app_key and
+                current_session["doc"] == doc and
+                current_session["project_id"] == proj_id):
+                current_session["seconds"] += SAMPLE_RATE
+            else:
+                # Close previous session, push to outbox
+                if current_session and current_session["seconds"] > 0:
+                    with lock:
+                        state["session_data"][id(current_session)] = current_session
+                # Start a new session
+                current_session = {
+                    "app_key":      app_key,
+                    "doc":          doc,
+                    "project_id":   proj_id,
+                    "project_name": proj_name,
+                    "started_at":   datetime.datetime.utcnow().isoformat() + "Z",
+                    "seconds":      SAMPLE_RATE,
+                }
 
         # Sync to Supabase every SYNC_INTERVAL seconds
         if now - state["last_sync"] >= SYNC_INTERVAL:
             with lock:
-                snapshot = dict(state["focus_secs"])
-                state["focus_secs"].clear()
+                # Include the in-progress session in this sync, then continue counting it
+                pending = list(state["session_data"].values())
+                state["session_data"].clear()
+            if current_session and current_session["seconds"] > 0:
+                pending.append(dict(current_session))
+                # reset the in-progress counter so we don't double-count
+                current_session["seconds"] = 0
+                current_session["started_at"] = datetime.datetime.utcnow().isoformat() + "Z"
 
-            success = sb_sync(state["user_id"], snapshot)
+            ok = sb_sync(state["user_id"], pending)
             state["last_sync"] = now
             state["sync_count"] += 1
-
-            if success:
-                state["status"] = f"Synced at {datetime.datetime.now().strftime('%H:%M')}"
-            else:
-                state["status"] = "Sync failed - will retry"
-
+            state["status"] = (f"Synced at {datetime.datetime.now().strftime('%H:%M')}"
+                              if ok else "Sync failed - will retry")
             update_tray()
 
         time.sleep(SAMPLE_RATE)
 
-    log("Tracking stopped")
+    # Final flush on shutdown
+    if current_session and current_session["seconds"] > 0:
+        sb_sync(state["user_id"], [current_session])
+
+    log("Helper stopped")
 
 
-# ── System tray ───────────────────────────────────────────────────────────────
+
+# - Tray icon -
 def make_tray_icon():
-    img = Image.new("RGBA", (64, 64), (16, 35, 71, 255))
+    img = Image.new("RGB", (64, 64), (16, 35, 71))
     d = ImageDraw.Draw(img)
-    # White "N" text - simple rectangle shapes
-    # N left bar
-    d.rectangle([14, 12, 22, 52], fill=(255, 255, 255))
-    # N diagonal
-    d.polygon([22, 12, 42, 40, 42, 12, 50, 12, 50, 52, 42, 52, 22, 24, 22, 52, 14, 52], fill=(255, 255, 255))
-    # N right bar
-    d.rectangle([42, 12, 50, 52], fill=(255, 255, 255))
+    d.polygon([14, 12, 22, 12, 42, 40, 42, 12, 50, 12, 50, 52, 42, 52, 22, 24, 22, 52, 14, 52], fill=(255, 255, 255))
     return img
 
 
 def update_tray():
     if not state.get("tray_icon"):
         return
-    idle_txt = " | IDLE" if state["idle"] else ""
+    idle_txt = " | Idle" if state["idle"] else ""
     app_lbl = APP_LABELS.get(state["current_app"], "Other")
+    proj = state.get("current_project")
+    proj_txt = f" - {proj}" if proj else ""
     elapsed = ""
     if state["start_time"]:
         mins = int((time.time() - state["start_time"]) / 60)
         h, m = divmod(mins, 60)
-        elapsed = f" | {h}h {m:02d}m today"
+        elapsed = f" | {h}h {m:02d}m"
     state["tray_icon"].title = (
-        f"NLA Agent v{AGENT_VERSION} | {state['name']}\n"
-        f"{app_lbl}{idle_txt}{elapsed}\n"
+        f"NLA Helper v{AGENT_VERSION} | {state['name']}\n"
+        f"{app_lbl}{proj_txt}{idle_txt}{elapsed}\n"
         f"{state['status']}"
     )
 
@@ -345,22 +481,19 @@ def show_status_window():
     if not IS_WINDOWS:
         return
     win = tk.Tk()
-    win.title("NLA Activity Agent")
-    win.geometry("400x340")
+    win.title("NLA Desktop Helper")
+    win.geometry("420x380")
     win.resizable(False, False)
     win.configure(bg="#0f1c38")
 
-    # Header
-    tk.Label(win, text="NLA Activity Agent", bg="#0f1c38", fg="white",
+    tk.Label(win, text="NLA Desktop Helper", bg="#0f1c38", fg="white",
              font=("Segoe UI", 15, "bold")).pack(pady=(22, 2))
-    tk.Label(win, text=f"Version {AGENT_VERSION} | Nature Landscape Architects",
+    tk.Label(win, text=f"v{AGENT_VERSION} | Productivity insights for your workflow",
              bg="#0f1c38", fg="#8ea4cc", font=("Segoe UI", 9)).pack()
 
-    sep = tk.Frame(win, height=1, bg="#1e3560")
-    sep.pack(fill="x", padx=24, pady=14)
+    tk.Frame(win, height=1, bg="#1e3560").pack(fill="x", padx=24, pady=14)
 
-    # Stats frame
-    frame = tk.Frame(win, bg="#162040", bd=0, relief="flat")
+    frame = tk.Frame(win, bg="#162040")
     frame.pack(fill="x", padx=24, pady=(0, 8))
 
     def stat_row(label, value, val_color="white"):
@@ -371,26 +504,25 @@ def show_status_window():
         tk.Label(f, text=value, bg="#162040", fg=val_color,
                  font=("Segoe UI", 9, "bold"), anchor="e").pack(side="right")
 
-    stat_row("User",       state.get("name") or "Not logged in")
-    stat_row("Username",   "@" + (state.get("username") or "?"))
+    stat_row("Signed in as", state.get("name") or "Not signed in")
     stat_row("Status",
-             "Tracking" if state["running"] else "Stopped",
+             "Active" if state["running"] else "Stopped",
              val_color="#4ade80" if state["running"] else "#f87171")
-    stat_row("Active now",
-             "Yes" if not state["idle"] else "Idle",
+    stat_row("Currently",
+             "Working" if not state["idle"] else "Away",
              val_color="#fbbf24" if state["idle"] else "#4ade80")
-    stat_row("App",        APP_LABELS.get(state["current_app"], "Other"))
-
-    total_secs = sum(state["focus_secs"].values())
-    hh, mm = divmod(total_secs // 60, 60)
-    stat_row("Session",    f"{hh}h {mm:02d}m (pending sync)")
+    stat_row("Application", APP_LABELS.get(state["current_app"], "Other"))
+    if state.get("current_project"):
+        stat_row("Project",  state["current_project"])
+    if state.get("current_doc"):
+        doc = state["current_doc"]
+        if len(doc) > 28: doc = doc[:25] + "..."
+        stat_row("Document", doc)
     stat_row("Last sync",  state["status"])
     stat_row("Syncs done", str(state["sync_count"]))
 
-    sep2 = tk.Frame(win, height=1, bg="#1e3560")
-    sep2.pack(fill="x", padx=24, pady=10)
+    tk.Frame(win, height=1, bg="#1e3560").pack(fill="x", padx=24, pady=10)
 
-    # Buttons
     btn_frame = tk.Frame(win, bg="#0f1c38")
     btn_frame.pack()
 
@@ -412,12 +544,7 @@ def show_status_window():
 
 
 def on_quit(icon, _):
-    log("Shutting down agent...")
-    with lock:
-        snapshot = dict(state["focus_secs"])
-    if snapshot and state["user_id"]:
-        log("Flushing remaining data before quit...")
-        sb_sync(state["user_id"], snapshot)
+    log("Shutting down helper...")
     state["running"] = False
     icon.stop()
 
@@ -431,13 +558,12 @@ def start_tray(user: dict):
 
     sb_upsert_profile(user)
 
-    # Start tracking thread
-    t = threading.Thread(target=tracking_loop, daemon=True)
-    t.start()
+    # Pre-fetch project list
+    state["projects"] = fetch_projects() or []
 
-    # Start heartbeat thread (updates agent_last_seen every 5 min)
-    hb = threading.Thread(target=heartbeat_loop, daemon=True)
-    hb.start()
+    # Start tracking + heartbeat threads
+    threading.Thread(target=tracking_loop, daemon=True).start()
+    threading.Thread(target=heartbeat_loop, daemon=True).start()
 
     # Start input listeners
     if IS_WINDOWS and HAS_PYNPUT:
@@ -448,30 +574,27 @@ def start_tray(user: dict):
 
     if not HAS_TRAY:
         log("ERROR: pystray not installed. Run: pip install pystray Pillow")
-        import time
         while state["running"]:
             time.sleep(60)
         return
-    # Build tray menu
+
     menu = pystray.Menu(
         pystray.MenuItem(
-            "Status / Open",
+            "Status",
             lambda: threading.Thread(target=show_status_window, daemon=True).start()
         ),
         pystray.MenuItem("Open Dashboard", lambda: __import__("webbrowser").open(DASHBOARD_URL)),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Quit (sync & exit)", on_quit),
+        pystray.MenuItem("Quit", on_quit),
     )
-    icon = pystray.Icon(
-        "NLA Agent", make_tray_icon(), "NLA Activity Agent", menu
-    )
+    icon = pystray.Icon("NLA Helper", make_tray_icon(), "NLA Desktop Helper", menu)
     state["tray_icon"] = icon
-    state["status"] = "Tracking"
+    state["status"] = "Active"
     update_tray()
     icon.run()
 
 
-# ── Config helpers ────────────────────────────────────────────────────────────
+# - Config helpers -
 def load_config() -> dict:
     try:
         with open(CONFIG_FILE, encoding="utf-8") as f:
@@ -486,20 +609,18 @@ def save_config(data: dict):
         json.dump(data, f, indent=2)
 
 
-# ── Login window ──────────────────────────────────────────────────────────────
+# - Login window -
 def show_login():
     cfg = load_config()
     win = tk.Tk()
-    win.title("NLA Activity Agent")
+    win.title("NLA Desktop Helper")
     win.geometry("420x520")
     win.resizable(False, False)
     win.configure(bg="#0f1c38")
 
-    # Logo area
     logo_frame = tk.Frame(win, bg="#0f1c38")
     logo_frame.pack(pady=(32, 0))
 
-    # NLA logo placeholder (navy circle with N)
     canvas = tk.Canvas(logo_frame, width=64, height=64, bg="#0f1c38", bd=0, highlightthickness=0)
     canvas.create_oval(2, 2, 62, 62, fill="#102347", outline="#1e3560", width=2)
     canvas.create_text(32, 32, text="N", fill="white", font=("Segoe UI", 28, "bold"))
@@ -507,19 +628,17 @@ def show_login():
 
     tk.Label(win, text="NLA Timesheet", bg="#0f1c38", fg="white",
              font=("Segoe UI", 18, "bold")).pack(pady=(12, 2))
-    tk.Label(win, text="Activity Agent", bg="#0f1c38", fg="#8ea4cc",
+    tk.Label(win, text="Desktop Helper", bg="#0f1c38", fg="#8ea4cc",
              font=("Segoe UI", 11)).pack()
     tk.Label(win, text="Nature Landscape Architects", bg="#0f1c38", fg="#4a6080",
              font=("Segoe UI", 8)).pack(pady=(2, 0))
 
-    sep = tk.Frame(win, height=1, bg="#1e3560")
-    sep.pack(fill="x", padx=32, pady=20)
+    tk.Frame(win, height=1, bg="#1e3560").pack(fill="x", padx=32, pady=20)
 
-    # Form
     form = tk.Frame(win, bg="#162040")
     form.pack(fill="x", padx=32)
 
-    tk.Label(form, text="Username", bg="#162040", fg="#8ea4cc",
+    tk.Label(form, text="Email", bg="#162040", fg="#8ea4cc",
              font=("Segoe UI", 9, "bold"), anchor="w").pack(fill="x", padx=16, pady=(14, 2))
     u_var = tk.StringVar(value=cfg.get("username", ""))
     u_entry = tk.Entry(form, textvariable=u_var, bg="#1e3560", fg="white",
@@ -550,7 +669,7 @@ def show_login():
         un = u_var.get().strip()
         pw = p_var.get().strip()
         if not un or not pw:
-            err_var.set("Please enter your username and password.")
+            err_var.set("Please enter your email and password.")
             return
         err_var.set("Signing in...")
         win.update()
@@ -562,7 +681,7 @@ def show_login():
             result["user"] = user
             win.destroy()
 
-    btn = tk.Button(form, text="Sign in and start tracking",
+    btn = tk.Button(form, text="Sign in",
                     command=attempt_login,
                     bg="#1a56d6", fg="white", relief="flat",
                     font=("Segoe UI", 10, "bold"), cursor="hand2",
@@ -570,11 +689,10 @@ def show_login():
     btn.pack(fill="x", padx=16, pady=(4, 16), ipady=11)
 
     note = tk.Label(win,
-                    text="Tracks active app usage silently.\nData syncs every 5 minutes. Click tray icon for status.",
+                    text="Captures BIM tool usage to help you log accurate timesheet entries.\nRuns in your system tray. Open dashboard anytime for insights.",
                     bg="#0f1c38", fg="#4a6080", font=("Segoe UI", 8), justify="center")
     note.pack(pady=(8, 0))
 
-    # Keyboard shortcuts
     p_entry.bind("<Return>", attempt_login)
     u_entry.bind("<Return>", lambda e: p_entry.focus())
 
@@ -587,32 +705,31 @@ def show_login():
     return result["user"]
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# - Entry point -
 def main():
     if not IS_WINDOWS:
-        print("[NLA Agent] This application requires Windows 10 or later.")
-        print("[NLA Agent] To test on Windows, build with PyInstaller.")
+        print("[NLA Helper] This application requires Windows 10 or later.")
         return
 
     # Prevent duplicate instances
-    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "NLA_ActivityAgent_v2_Mutex")
-    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "NLA_DesktopHelper_v3_Mutex")
+    if ctypes.windll.kernel32.GetLastError() == 183:
         messagebox.showwarning(
-            "NLA Activity Agent",
-            "NLA Activity Agent is already running.\n\nCheck the system tray (bottom-right)."
+            "NLA Desktop Helper",
+            "NLA Desktop Helper is already running.\n\nCheck the system tray (bottom-right)."
         )
         return
 
-    log(f"NLA Activity Agent v{AGENT_VERSION} starting...")
+    log(f"NLA Helper v{AGENT_VERSION} starting...")
     if not HAS_TK:
         log("ERROR: tkinter not available. Cannot show login window.")
         return
     user = show_login()
     if user:
-        log(f"Logged in as {user['name']} ({user['username']})")
+        log(f"Signed in as {user['name']}")
         start_tray(user)
     else:
-        log("Login cancelled or failed.")
+        log("Sign-in cancelled.")
 
 
 if __name__ == "__main__":
