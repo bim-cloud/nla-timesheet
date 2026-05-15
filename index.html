@@ -2019,4 +2019,822 @@ const Icon=window.Icon;const LoginScreen=window.LoginScreen;const Sidebar=window
 React.useEffect(()=>{if(user){if(user.type==='manager'){setMgrUnlocked(true);sessionStorage.setItem('nla_mgr_unlocked','1');setView('manager');}else{setView('employee');setMgrUnlocked(false);sessionStorage.removeItem('nla_mgr_unlocked');}}},[user?.id]);React.useEffect(()=>{setActiveNav(view==='employee'?'dashboard':'overview');},[view]);React.useEffect(()=>{const root=document.documentElement;root.style.setProperty('--brand-navy',brandColor);root.style.setProperty('--accent',brandColor);},[brandColor]);React.useEffect(()=>{const handler=ev=>{if(ev.data?.type==='__activate_edit_mode')setTweaksOpen(true);if(ev.data?.type==='__deactivate_edit_mode')setTweaksOpen(false);};window.addEventListener('message',handler);window.parent.postMessage({type:'__edit_mode_available'},'*');return()=>window.removeEventListener('message',handler);},[]);const persistEdit=edits=>window.parent.postMessage({type:'__edit_mode_set_keys',edits},'*');// Approval badge count - must be BEFORE any early return (Rules of Hooks)
 React.useEffect(()=>{if(!user)return;if(view!=='manager'&&!mgrUnlocked)return;if(window.SupaEntries&&window.SupaEntries.getPendingSubmissions){window.SupaEntries.getPendingSubmissions().then(function(pending){var groups=new Set(pending.map(function(e){return e.user_id+'_'+(e.date||'').slice(0,7);}));setNavCounts({approvals:groups.size});}).catch(function(){});}},[user,view,mgrUnlocked,activeNav]);if(!user){return/*#__PURE__*/React.createElement(LoginScreen,{onLogin:u=>setUser(u)});}const canSwitchView=user.type==='manager';// non-manager users can only see employee view
 const effectiveView=canSwitchView&&(view==='manager'?mgrUnlocked:true)?view:'employee';// Managers can switch views freely   no password re-entry needed
-const requestSetView=v=>{setView(v);persistEdit({view:v});};const title=`${greetingPrefix()}, ${user.name.split(' ')[0]}`;const todayStr=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});const subtitle=effectiveView==='employee'?`${todayStr}   Here's your day at a glance.`:`${todayStr}   Here's where the studio stands today.`;const logout=()=>{Auth.clearSession();setUser(null);};return/*#__PURE__*/React.createElement("div",{className:"app","data-screen-label":`NLA Timesheet   ${effectiveView}`},/*#__PURE__*/React.createElement(Sidebar,{view:effectiveView,activeNav:activeNav,setActiveNav:setActiveNav,user:user,onSettings:()=>setSettingsOpen(true),onNotifications:()=>setNotifOpen(true),navCounts:navCounts}),/*#__PURE__*/React.createElement("div",{className:"main"},/*#__PURE__*/React.createElement(Topbar,{view:effectiveView,setView:canSwitchView?requestSetView:null,title:title,subtitle:subtitle,canSwitchView:canSwitchView,user:user,actions:/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("button",{className:"btn"},/*#__PURE__*/React.createElement(Icon,{name:"search",size:14})," Search"),/*#__PURE__*/React.createElement("button",{className:"btn"},/*#__PURE__*/React.createElement(Icon,{name:"download",size:14})," Export"),/*#__PURE__*/React.createElement(UserMenu,{user:user,onLogout:logout}))}),effectiveView==='employee'?/*#__PURE__*/React.createElement(EmployeeView,{featuresEnabled:features,user:user,activeNav:activeNav}):/*#__PURE__*/React.createElement(ManagerView,{activeNav:activeNav})),/*#__PURE__*/React.createElement(TweaksPanel,{open:tweaksOpen,brandColor:brandColor,setBrandColor:c=>{setBrandColor(c);persistEdit({brandColor:c});},features:features,setFeatures:f=>{setFeatures(f);persistEdit({features:f});},view:effectiveView,setView:requestSetView,canSwitchView:canSwitchView}),/*#__PURE__*/React.createElement(ManagerUnlockModal,{open:mgrUnlockOpen,user:user,onClose:()=>setMgrUnlockOpen(false),onSuccess:()=>{setMgrUnlocked(true);setMgrUnlockOpen(false);setView('manager');persistEdit({view:'manager'});}}),settingsOpen&&window.SettingsModal&&React.createElement(window.SettingsModal,{user,open:settingsOpen,onClose:()=>setSettingsOpen(false)}),notifOpen&&window.NotificationsPanel&&React.createElement(window.NotificationsPanel,{user,open:notifOpen,onClose:()=>setNotifOpen(false)}));}ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App,null));</script></body></html>
+const requestSetView=v=>{setView(v);persistEdit({view:v});};const title=`${greetingPrefix()}, ${user.name.split(' ')[0]}`;const todayStr=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});const subtitle=effectiveView==='employee'?`${todayStr}   Here's your day at a glance.`:`${todayStr}   Here's where the studio stands today.`;const logout=()=>{Auth.clearSession();setUser(null);};return/*#__PURE__*/React.createElement("div",{className:"app","data-screen-label":`NLA Timesheet   ${effectiveView}`},/*#__PURE__*/React.createElement(Sidebar,{view:effectiveView,activeNav:activeNav,setActiveNav:setActiveNav,user:user,onSettings:()=>setSettingsOpen(true),onNotifications:()=>setNotifOpen(true),navCounts:navCounts}),/*#__PURE__*/React.createElement("div",{className:"main"},/*#__PURE__*/React.createElement(Topbar,{view:effectiveView,setView:canSwitchView?requestSetView:null,title:title,subtitle:subtitle,canSwitchView:canSwitchView,user:user,actions:/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("button",{className:"btn"},/*#__PURE__*/React.createElement(Icon,{name:"search",size:14})," Search"),/*#__PURE__*/React.createElement("button",{className:"btn"},/*#__PURE__*/React.createElement(Icon,{name:"download",size:14})," Export"),/*#__PURE__*/React.createElement(UserMenu,{user:user,onLogout:logout}))}),effectiveView==='employee'?/*#__PURE__*/React.createElement(EmployeeView,{featuresEnabled:features,user:user,activeNav:activeNav}):/*#__PURE__*/React.createElement(ManagerView,{activeNav:activeNav})),/*#__PURE__*/React.createElement(TweaksPanel,{open:tweaksOpen,brandColor:brandColor,setBrandColor:c=>{setBrandColor(c);persistEdit({brandColor:c});},features:features,setFeatures:f=>{setFeatures(f);persistEdit({features:f});},view:effectiveView,setView:requestSetView,canSwitchView:canSwitchView}),/*#__PURE__*/React.createElement(ManagerUnlockModal,{open:mgrUnlockOpen,user:user,onClose:()=>setMgrUnlockOpen(false),onSuccess:()=>{setMgrUnlocked(true);setMgrUnlockOpen(false);setView('manager');persistEdit({view:'manager'});}}),settingsOpen&&window.SettingsModal&&React.createElement(window.SettingsModal,{user,open:settingsOpen,onClose:()=>setSettingsOpen(false)}),notifOpen&&window.NotificationsPanel&&React.createElement(window.NotificationsPanel,{user,open:notifOpen,onClose:()=>setNotifOpen(false)}));}ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App,null));</script>
+<script>
+/* =============================================================
+   NLA Timesheet - Project Report Module
+   Adds: Project Report tab + per-project history view + Excel export
+   Injected after main bundle, registers components and routes
+   ============================================================= */
+(function() {
+  'use strict';
+  if (!window.React || !window.SupaEntries) {
+    console.warn('[ProjectReport] Dependencies not ready, retrying...');
+    setTimeout(arguments.callee, 200);
+    return;
+  }
+  const e = React.createElement;
+  const { useState, useEffect, useMemo, useRef } = React;
+
+  // ---------- helpers ----------
+  const pad = n => String(n).padStart(2, '0');
+  const localDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const parseDate = s => new Date(s + 'T12:00:00');
+  const fmtDate = s => {
+    const d = parseDate(s);
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  const fmtDateShort = s => {
+    const d = parseDate(s);
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  };
+
+  // Get Monday of the week containing the given date
+  const mondayOf = d => {
+    const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const dow = dt.getDay();
+    dt.setDate(dt.getDate() - dow + (dow === 0 ? -6 : 1));
+    return dt;
+  };
+
+  // Build date range presets
+  const datePresets = () => {
+    const today = new Date();
+    const monday = mondayOf(today);
+    const lastMon = new Date(monday); lastMon.setDate(monday.getDate() - 7);
+    const lastFri = new Date(lastMon); lastFri.setDate(lastMon.getDate() + 4);
+    const friday = new Date(monday); friday.setDate(monday.getDate() + 4);
+    const mStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const mEnd = new Date(today.getFullYear(), today.getMonth()+1, 0);
+    const lmStart = new Date(today.getFullYear(), today.getMonth()-1, 1);
+    const lmEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+    return {
+      'this-week':   { from: localDate(monday),  to: localDate(friday),   label: 'This week' },
+      'last-week':   { from: localDate(lastMon), to: localDate(lastFri),  label: 'Last week' },
+      'this-month':  { from: localDate(mStart),  to: localDate(mEnd),     label: 'This month' },
+      'last-month':  { from: localDate(lmStart), to: localDate(lmEnd),    label: 'Last month' },
+      'last-30':     { from: localDate(new Date(today.getTime() - 30*86400000)), to: localDate(today), label: 'Last 30 days' },
+      'last-90':     { from: localDate(new Date(today.getTime() - 90*86400000)), to: localDate(today), label: 'Last 90 days' },
+    };
+  };
+
+  // ---------- Icon helper (reuses existing) ----------
+  const Icon = window.Icon || (() => null);
+
+  // ============================================================
+  // ProjectReport - main report view
+  // ============================================================
+  function ProjectReport({ initialProjectId = '', onClose }) {
+    const projects = window.DATA.PROJECTS || [];
+    const presets = datePresets();
+    const [projectId, setProjectId] = useState(initialProjectId || (projects[0]?.id || ''));
+    const [presetKey, setPresetKey] = useState('this-month');
+    const [customFrom, setCustomFrom] = useState(presets['this-month'].from);
+    const [customTo, setCustomTo]     = useState(presets['this-month'].to);
+    const [breakdown, setBreakdown]   = useState('weekly'); // weekly | monthly
+    const [entries, setEntries]       = useState([]);
+    const [profiles, setProfiles]     = useState({});
+    const [loading, setLoading]       = useState(true);
+    const [exporting, setExporting]   = useState(false);
+    const [showEntries, setShowEntries] = useState(false);
+
+    const range = presetKey === 'custom'
+      ? { from: customFrom, to: customTo, label: `${fmtDate(customFrom)} - ${fmtDate(customTo)}` }
+      : presets[presetKey];
+
+    const project = projects.find(p => p.id === projectId);
+
+    useEffect(() => {
+      if (!projectId) { setEntries([]); setLoading(false); return; }
+      setLoading(true);
+      window.SupaEntries.teamSummary(range.from, range.to).then(rows => {
+        const filtered = (rows || []).filter(r => r.project_id === projectId);
+        const profMap = {};
+        filtered.forEach(r => { if (r.profiles) profMap[r.user_id] = r.profiles; });
+        setProfiles(profMap);
+        setEntries(filtered);
+        setLoading(false);
+      }).catch(err => {
+        console.error('Project report load error:', err);
+        setLoading(false);
+      });
+    }, [projectId, range.from, range.to]);
+
+    // Aggregations
+    const totalHours = entries.reduce((s, e) => s + parseFloat(e.hours||0), 0);
+    const uniqueDays = new Set(entries.map(x => x.date)).size;
+    const byUser = {};
+    entries.forEach(x => {
+      const uid = x.user_id;
+      if (!byUser[uid]) {
+        const p = profiles[uid] || {};
+        byUser[uid] = { name: p.name || 'Unknown', role: p.role || '', initials: p.initials || '',
+                        hours: 0, days: new Set(), lastDate: '' };
+      }
+      byUser[uid].hours += parseFloat(x.hours||0);
+      byUser[uid].days.add(x.date);
+      if (!byUser[uid].lastDate || x.date > byUser[uid].lastDate) byUser[uid].lastDate = x.date;
+    });
+    const resources = Object.values(byUser).map(r => ({ ...r, days: r.days.size })).sort((a,b) => b.hours - a.hours);
+    const avgPerResource = resources.length ? totalHours / resources.length : 0;
+
+    // Weekly buckets
+    const weekly = useMemo(() => {
+      const buckets = {};
+      entries.forEach(x => {
+        const monday = mondayOf(parseDate(x.date));
+        const key = localDate(monday);
+        if (!buckets[key]) buckets[key] = { hours: 0, start: monday };
+        buckets[key].hours += parseFloat(x.hours||0);
+      });
+      return Object.entries(buckets)
+        .sort(([a],[b]) => a.localeCompare(b))
+        .map(([key, b]) => {
+          const end = new Date(b.start); end.setDate(b.start.getDate() + 4);
+          return {
+            label: b.start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' - ' +
+                   end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+            hours: b.hours,
+          };
+        });
+    }, [entries]);
+
+    // Monthly buckets
+    const monthly = useMemo(() => {
+      const buckets = {};
+      entries.forEach(x => {
+        const d = parseDate(x.date);
+        const key = `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
+        if (!buckets[key]) buckets[key] = { hours: 0, label: d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) };
+        buckets[key].hours += parseFloat(x.hours||0);
+      });
+      return Object.entries(buckets).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => v);
+    }, [entries]);
+
+    const breakdownData = breakdown === 'weekly' ? weekly : monthly;
+    const maxBar = Math.max(1, ...breakdownData.map(b => b.hours));
+
+    const doExport = async () => {
+      if (!project) return;
+      setExporting(true);
+      try {
+        await window.exportProjectReportExcel(project, range, entries, profiles, resources);
+      } catch (err) {
+        console.error(err);
+        alert('Export failed: ' + (err.message || err));
+      }
+      setExporting(false);
+    };
+
+    const presetBtnStyle = (active) => ({
+      padding: '6px 12px', borderRadius: 7, border: '1px solid',
+      borderColor: active ? '#102347' : 'var(--border)',
+      background: active ? '#102347' : 'transparent',
+      color: active ? 'white' : 'var(--text-muted)',
+      fontSize: 12, fontWeight: 500, cursor: 'pointer',
+      transition: 'all 0.15s ease',
+    });
+
+    const inputStyle = {
+      border: '1px solid var(--border)', borderRadius: 7, padding: '6px 10px',
+      fontSize: 12, background: 'var(--surface)', color: 'var(--text)',
+    };
+
+    return e('div', null,
+      // Header
+      e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          marginBottom: 16, flexWrap: 'wrap', gap: 12 } },
+        e('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+          onClose && e('button', {
+            onClick: onClose, className: 'btn btn-sm',
+            style: { display: 'flex', alignItems: 'center', gap: 4 }
+          }, e(Icon, { name: 'chevronL', size: 12 }), 'Back'),
+          e('div', null,
+            e('h2', { style: { margin: 0, fontSize: 18, fontWeight: 600 } }, 'Project Report'),
+            e('div', { style: { fontSize: 12, color: 'var(--text-muted)', marginTop: 3 } },
+              project ? `${project.name} - ${range.label}` : 'Select a project to begin')
+          )
+        ),
+        e('div', { style: { display: 'flex', gap: 8 } },
+          e('button', {
+            onClick: doExport, disabled: exporting || !project || entries.length === 0,
+            className: 'btn btn-sm',
+            style: { display: 'flex', alignItems: 'center', gap: 4,
+                     background: '#1d7a4a', color: 'white', border: 'none',
+                     padding: '7px 14px', borderRadius: 7, fontSize: 12, fontWeight: 600,
+                     cursor: (exporting || !project) ? 'not-allowed' : 'pointer',
+                     opacity: (exporting || !project) ? 0.5 : 1 }
+          }, e(Icon, { name: 'download', size: 12, animated: true }),
+             exporting ? 'Exporting...' : 'Export Excel')
+        )
+      ),
+
+      // Filters card
+      e('div', { className: 'card', style: { padding: 16, marginBottom: 16 } },
+        // Project + breakdown row
+        e('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 } },
+          e('div', null,
+            e('label', { style: { fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
+                                  textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 } },
+              'Project'),
+            e('select', {
+              value: projectId,
+              onChange: ev => setProjectId(ev.target.value),
+              style: { ...inputStyle, width: '100%', cursor: 'pointer' }
+            }, projects.map(p => e('option', { key: p.id, value: p.id },
+                p.code ? `${p.code} - ${p.name}` : p.name)))
+          ),
+          e('div', null,
+            e('label', { style: { fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
+                                  textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 } },
+              'Breakdown view'),
+            e('div', { style: { display: 'flex', background: 'var(--surface-muted)',
+                                borderRadius: 8, padding: 2, gap: 2, width: 'fit-content' } },
+              ['weekly','monthly'].map(v =>
+                e('button', {
+                  key: v, onClick: () => setBreakdown(v),
+                  style: { padding: '6px 18px', borderRadius: 6, border: 'none',
+                           background: breakdown === v ? '#102347' : 'transparent',
+                           color: breakdown === v ? 'white' : 'var(--text-muted)',
+                           fontSize: 12, fontWeight: 500, cursor: 'pointer', textTransform: 'capitalize' }
+                }, v)
+              )
+            )
+          )
+        ),
+        // Date range presets
+        e('div', null,
+          e('label', { style: { fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
+                                textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 } },
+            'Date range'),
+          e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' } },
+            Object.entries(presets).map(([k, p]) =>
+              e('button', {
+                key: k, onClick: () => setPresetKey(k),
+                style: presetBtnStyle(presetKey === k)
+              }, p.label)
+            ),
+            e('button', {
+              onClick: () => setPresetKey('custom'),
+              style: presetBtnStyle(presetKey === 'custom')
+            }, 'Custom'),
+            presetKey === 'custom' && e('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
+              e('input', { type: 'date', value: customFrom,
+                onChange: ev => setCustomFrom(ev.target.value), style: inputStyle }),
+              e('span', { style: { color: 'var(--text-muted)' } }, ' '),
+              e('input', { type: 'date', value: customTo,
+                onChange: ev => setCustomTo(ev.target.value), style: inputStyle })
+            )
+          )
+        )
+      ),
+
+      loading
+        ? e('div', { style: { padding: 60, textAlign: 'center', color: 'var(--text-muted)' } }, 'Loading project report...')
+        : !project
+        ? e('div', { className: 'card', style: { padding: 40, textAlign: 'center', color: 'var(--text-muted)' } },
+            'No project selected')
+        : e('div', null,
+            // Summary cards
+            e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 14 } },
+              [
+                ['Total hours', totalHours.toFixed(1) + 'h', `across ${entries.length} entries`, 'clock'],
+                ['Resources', resources.length, resources.length === 1 ? 'person' : 'people involved', 'users'],
+                ['Working days', uniqueDays, 'days with logged time', 'calendar'],
+                ['Avg per resource', avgPerResource.toFixed(1) + 'h', 'over the period', 'trending'],
+              ].map(([lbl, val, sub, ic]) =>
+                e('div', { key: lbl, className: 'card', style: { padding: '14px 16px' } },
+                  e('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 } },
+                    e('div', { style: { width: 26, height: 26, borderRadius: 7,
+                                        background: 'rgba(16,35,71,0.08)', color: '#102347',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+                      e(Icon, { name: ic, size: 13, animated: true })),
+                    e('span', { style: { fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
+                                         textTransform: 'uppercase', letterSpacing: '0.06em' } }, lbl)
+                  ),
+                  e('div', { style: { fontSize: 22, fontWeight: 800, color: '#102347',
+                                      fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 } }, val),
+                  e('div', { style: { fontSize: 11, color: 'var(--text-muted)', marginTop: 4 } }, sub)
+                )
+              )
+            ),
+
+            // Resource-wise hours
+            e('div', { className: 'card', style: { padding: 18, marginBottom: 14 } },
+              e('h3', { style: { margin: '0 0 4px', fontSize: 14, fontWeight: 600 } }, 'Resource-wise hours'),
+              e('div', { style: { fontSize: 11, color: 'var(--text-muted)', marginBottom: 14 } },
+                'Hours contributed by each team member'),
+              resources.length === 0
+                ? e('div', { style: { padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 } },
+                    'No activity recorded for this project in the selected period')
+                : e('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+                    resources.map((r, i) => {
+                      const pct = totalHours > 0 ? (r.hours / totalHours) * 100 : 0;
+                      return e('div', { key: i, style: { display: 'grid',
+                          gridTemplateColumns: '32px 200px 1fr 80px 80px',
+                          gap: 12, alignItems: 'center' } },
+                        e('div', { style: { width: 32, height: 32, borderRadius: '50%',
+                                            background: '#102347', color: 'white',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            fontSize: 11, fontWeight: 700 } },
+                          r.initials || (r.name||'?').slice(0,2).toUpperCase()),
+                        e('div', null,
+                          e('div', { style: { fontSize: 13, fontWeight: 600, color: 'var(--text)' } }, r.name),
+                          r.role && e('div', { style: { fontSize: 11, color: 'var(--text-muted)' } }, r.role)
+                        ),
+                        e('div', { style: { height: 8, background: 'var(--surface-muted)',
+                                            borderRadius: 4, overflow: 'hidden' } },
+                          e('div', { style: { height: '100%', width: pct + '%', background: '#102347',
+                                              borderRadius: 4, transition: 'width 0.5s ease' } })
+                        ),
+                        e('div', { style: { textAlign: 'right', fontSize: 14, fontWeight: 700,
+                                            color: '#102347', fontVariantNumeric: 'tabular-nums' } },
+                          r.hours.toFixed(1) + 'h'),
+                        e('div', { style: { textAlign: 'right', fontSize: 11, color: 'var(--text-muted)' } },
+                          `${pct.toFixed(0)}%   ${r.days}d`)
+                      );
+                    })
+                  )
+            ),
+
+            // Time consumption chart
+            e('div', { className: 'card', style: { padding: 18, marginBottom: 14 } },
+              e('h3', { style: { margin: '0 0 4px', fontSize: 14, fontWeight: 600 } },
+                breakdown === 'weekly' ? 'Weekly consumption' : 'Monthly consumption'),
+              e('div', { style: { fontSize: 11, color: 'var(--text-muted)', marginBottom: 16 } },
+                `Hours logged on ${project.name} per ${breakdown === 'weekly' ? 'week' : 'month'}`),
+              breakdownData.length === 0
+                ? e('div', { style: { padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 } },
+                    'No data for the selected period')
+                : e('div', { style: { display: 'flex', alignItems: 'flex-end', gap: 12,
+                                       height: 180, paddingTop: 20, overflowX: 'auto' } },
+                    breakdownData.map((b, i) => {
+                      const h = (b.hours / maxBar) * 140;
+                      return e('div', { key: i, style: { flex: 1, minWidth: 60,
+                          display: 'flex', flexDirection: 'column',
+                          alignItems: 'center', gap: 6 } },
+                        e('div', { style: { fontSize: 11, fontWeight: 700, color: '#102347',
+                                            fontVariantNumeric: 'tabular-nums' } },
+                          b.hours.toFixed(1) + 'h'),
+                        e('div', { style: { width: '100%', maxWidth: 60, height: Math.max(4, h),
+                                            background: 'linear-gradient(180deg, #102347 0%, #1a3a6c 100%)',
+                                            borderRadius: '6px 6px 0 0',
+                                            transition: 'height 0.5s ease',
+                                            position: 'relative', overflow: 'hidden' } },
+                          b.hours > 0 && e('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, height: 4,
+                                            background: '#C9A84C' } })
+                        ),
+                        e('div', { style: { fontSize: 10, color: 'var(--text-muted)', textAlign: 'center',
+                                            maxWidth: 70, overflow: 'hidden', textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap' } }, b.label)
+                      );
+                    })
+                  )
+            ),
+
+            // Detailed entries (collapsible)
+            e('div', { className: 'card', style: { padding: 0, overflow: 'hidden' } },
+              e('div', { onClick: () => setShowEntries(!showEntries),
+                  style: { padding: '14px 18px', display: 'flex', justifyContent: 'space-between',
+                           alignItems: 'center', cursor: 'pointer',
+                           borderBottom: showEntries ? '1px solid var(--border)' : 'none' } },
+                e('div', null,
+                  e('div', { style: { fontSize: 14, fontWeight: 600 } }, 'Detailed log'),
+                  e('div', { style: { fontSize: 11, color: 'var(--text-muted)' } },
+                    `${entries.length} entries`)
+                ),
+                e('span', { style: { fontSize: 14, color: 'var(--text-muted)' } },
+                  showEntries ? ' ' : ' ')
+              ),
+              showEntries && e('div', { style: { maxHeight: 400, overflow: 'auto' } },
+                entries.length === 0
+                  ? e('div', { style: { padding: 24, textAlign: 'center', color: 'var(--text-muted)' } },
+                      'No entries')
+                  : e('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12 } },
+                      e('thead', { style: { position: 'sticky', top: 0, background: 'var(--surface-muted)' } },
+                        e('tr', null,
+                          ['Date','Person','Task description','Remarks','Hours'].map(h =>
+                            e('th', { key: h, style: { padding: '8px 12px', fontSize: 10, fontWeight: 700,
+                                textTransform: 'uppercase', letterSpacing: '0.06em',
+                                color: 'var(--text-muted)', textAlign: h === 'Hours' ? 'right' : 'left',
+                                borderBottom: '2px solid var(--border)' } }, h)
+                          )
+                        )
+                      ),
+                      e('tbody', null,
+                        entries.slice().sort((a,b) => b.date.localeCompare(a.date)).map((x, i) => {
+                          const prof = profiles[x.user_id] || {};
+                          return e('tr', { key: i, style: { borderTop: '1px solid var(--border)' } },
+                            e('td', { style: { padding: '9px 12px', color: 'var(--text-muted)',
+                                                fontFamily: 'var(--font-mono)' } }, fmtDateShort(x.date)),
+                            e('td', { style: { padding: '9px 12px', fontWeight: 500 } }, prof.name || ' '),
+                            e('td', { style: { padding: '9px 12px' } }, x.title || ' '),
+                            e('td', { style: { padding: '9px 12px', color: 'var(--text-muted)' } }, x.notes || ' '),
+                            e('td', { style: { padding: '9px 12px', textAlign: 'right', fontWeight: 700,
+                                                color: '#102347', fontVariantNumeric: 'tabular-nums' } },
+                              parseFloat(x.hours||0).toFixed(2) + 'h')
+                          );
+                        })
+                      )
+                    )
+              )
+            )
+          )
+    );
+  }
+
+  window.ProjectReport = ProjectReport;
+
+  // ============================================================
+  // Excel export - matches existing NLA template
+  // ============================================================
+  window.exportProjectReportExcel = async function(project, range, entries, profiles, resources) {
+    const EJS = window.ExcelJS;
+    if (!EJS) {
+      alert('Excel library not loaded. Please refresh the page.');
+      return;
+    }
+    const wb = new EJS.Workbook();
+    wb.creator = 'NLA Timesheet';
+    wb.created = new Date();
+    const ws = wb.addWorksheet('Project Report', {
+      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true }
+    });
+    ws.columns = [
+      { width: 12 }, { width: 14 }, { width: 24 }, { width: 11 }, { width: 11 },
+      { width: 10 }, { width: 12 }, { width: 40 }, { width: 22 }
+    ];
+
+    // NLA brand colors
+    const F = {
+      navy:  { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF102347' } },
+      gold:  { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC9A84C' } },
+      white: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } },
+      light: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EDF4' } },
+      lgray: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F7FA' } },
+      info:  { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EDF4' } },
+    };
+    const B = {
+      thin:    { style: 'thin',   color: { argb: 'FFD8DEE9' } },
+      medium:  { style: 'medium', color: { argb: 'FF102347' } },
+      hair:    { style: 'hair',   color: { argb: 'FFD8DEE9' } },
+    };
+    const allHair = { top: B.hair, bottom: B.hair, left: B.hair, right: B.hair };
+    const allMed  = { top: B.medium, bottom: B.medium, left: B.medium, right: B.medium };
+    const bBottom = { bottom: B.thin };
+
+    const font = (color, size, bold) => ({ name: 'Calibri', size, color: { argb: color }, bold: !!bold });
+    const align = (h, v, wrap) => ({ horizontal: h, vertical: v, wrapText: !!wrap });
+
+    // Row 1 - Navy header bar with logo
+    const r1 = ws.addRow([]);
+    r1.height = 40;
+    ws.mergeCells('A1:I1');
+    const c1 = ws.getCell('A1');
+    c1.fill = F.navy;
+    c1.value = 'NATURE LANDSCAPE ARCHITECTS';
+    c1.font = font('FFFFFFFF', 16, true);
+    c1.alignment = align('right', 'middle');
+    if (window.NLA_LOGO_DATA) {
+      try {
+        const imgData = window.NLA_LOGO_DATA.split(',')[1];
+        const imgId = wb.addImage({ base64: imgData, extension: 'png' });
+        ws.addImage(imgId, { tl: { col: 0, row: 0 }, br: { col: 3, row: 1 } });
+      } catch(e) { /* logo optional */ }
+    }
+
+    // Row 2 - Gold sub-header
+    const r2 = ws.addRow([]);
+    r2.height = 24;
+    ws.mergeCells('A2:I2');
+    const c2 = ws.getCell('A2');
+    c2.fill = F.gold;
+    c2.value = 'PROJECT TIMESHEET REPORT';
+    c2.font = font('FF102347', 12, true);
+    c2.alignment = align('center', 'middle');
+
+    // Info rows 3-5
+    const totalHours = entries.reduce((s,x) => s + parseFloat(x.hours||0), 0);
+    const uniqueDays = new Set(entries.map(x => x.date)).size;
+    const infoRows = [
+      [['Project', project.name], ['Site', project.client || '-'], ['Period', range.label]],
+      [['Project Code', project.code || '-'], ['Resources', resources.length], ['Total Hours', totalHours.toFixed(2) + 'h']],
+      [['Generated', new Date().toLocaleDateString('en-GB')], ['Working Days', uniqueDays], ['Total Entries', entries.length]],
+    ];
+    infoRows.forEach(row => {
+      const r = ws.addRow([]);
+      r.height = 20;
+      row.forEach((pair, i) => {
+        const labelCol = i * 3 + 1;
+        const valueCol = labelCol + 1;
+        ws.mergeCells(r.number, valueCol, r.number, valueCol + 1);
+        const lc = ws.getCell(r.number, labelCol);
+        const vc = ws.getCell(r.number, valueCol);
+        lc.value = pair[0]; vc.value = pair[1];
+        lc.fill = F.info; vc.fill = F.light;
+        lc.font = font('FF102347', 10, true);
+        vc.font = font('FF102347', 10, false);
+        lc.alignment = align('left', 'middle');
+        vc.alignment = align('left', 'middle');
+        lc.border = bBottom; vc.border = bBottom;
+      });
+    });
+
+    // Blank gap
+    ws.addRow([]).height = 10;
+
+    // Gold "RESOURCE SUMMARY" banner
+    const rsBanner = ws.addRow([]);
+    rsBanner.height = 22;
+    ws.mergeCells(rsBanner.number, 1, rsBanner.number, 9);
+    const rsCell = ws.getCell(rsBanner.number, 1);
+    rsCell.fill = F.gold;
+    rsCell.value = 'RESOURCE SUMMARY';
+    rsCell.font = font('FF102347', 11, true);
+    rsCell.alignment = align('center', 'middle');
+
+    // Resource summary headers
+    const rsHead = ws.addRow(['#', 'NAME', 'ROLE', 'DAYS', 'HOURS', '% SHARE', 'HOURS', 'MINUTES', '']);
+    rsHead.height = 26;
+    rsHead.eachCell((cell, col) => {
+      cell.fill = F.navy;
+      cell.font = font('FFFFFFFF', 9, true);
+      cell.alignment = align('center', 'middle', true);
+      cell.border = allMed;
+    });
+
+    // Resource rows
+    resources.forEach((r, idx) => {
+      const hh = Math.floor(r.hours);
+      const mm = Math.round((r.hours - hh) * 60);
+      const pct = totalHours > 0 ? ((r.hours / totalHours) * 100).toFixed(1) + '%' : '0%';
+      const row = ws.addRow([idx + 1, r.name, r.role || '-', r.days,
+                              r.hours.toFixed(2), pct, hh, pad(mm), '']);
+      row.height = 18;
+      row.eachCell((cell, col) => {
+        cell.fill = idx % 2 === 0 ? F.white : F.lgray;
+        cell.font = font('FF102347', 9);
+        cell.alignment = align(col === 2 || col === 3 ? 'left' : 'center', 'middle');
+        cell.border = allHair;
+        if (col === 5) cell.font = font('FF102347', 9, true);
+      });
+    });
+
+    // Total row for resource summary
+    const rsTotal = ws.addRow(['', 'TOTAL', '', uniqueDays, totalHours.toFixed(2), '100%',
+                                Math.floor(totalHours), pad(Math.round((totalHours - Math.floor(totalHours)) * 60)), '']);
+    rsTotal.height = 22;
+    rsTotal.eachCell((cell) => {
+      cell.fill = F.navy;
+      cell.font = font('FFFFFFFF', 10, true);
+      cell.alignment = align('center', 'middle');
+      cell.border = allMed;
+    });
+
+    // Blank gap
+    ws.addRow([]).height = 12;
+
+    // Gold "DETAILED LOG" banner
+    const dlBanner = ws.addRow([]);
+    dlBanner.height = 22;
+    ws.mergeCells(dlBanner.number, 1, dlBanner.number, 9);
+    const dlCell = ws.getCell(dlBanner.number, 1);
+    dlCell.fill = F.gold;
+    dlCell.value = 'DETAILED LOG';
+    dlCell.font = font('FF102347', 11, true);
+    dlCell.alignment = align('center', 'middle');
+
+    // Detail headers (matches NLA weekly format)
+    const dlHead = ws.addRow(['DATE', 'DAY', 'PERSON', 'START', 'END', 'LUNCH', 'NET HRS', 'TASK DESCRIPTION', 'REMARKS']);
+    dlHead.height = 26;
+    dlHead.eachCell((cell, col) => {
+      cell.fill = F.navy;
+      cell.font = font('FFFFFFFF', 9, true);
+      cell.alignment = align('center', 'middle', true);
+      cell.border = allMed;
+    });
+
+    const sortedEntries = entries.slice().sort((a,b) => a.date.localeCompare(b.date));
+    const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    sortedEntries.forEach((x, idx) => {
+      const prof = profiles[x.user_id] || {};
+      const d = new Date(x.date + 'T12:00:00');
+      const dateStr = pad(d.getDate()) + '/' + pad(d.getMonth()+1) + '/' + String(d.getFullYear()).slice(-2);
+      const row = ws.addRow([
+        dateStr,
+        DAYS[d.getDay()],
+        prof.name || '-',
+        x.start_time || '-',
+        x.end_time || '-',
+        parseFloat(x.lunch_break || 0).toFixed(2),
+        parseFloat(x.hours || 0).toFixed(2),
+        x.title || '-',
+        x.notes || '-'
+      ]);
+      row.height = 18;
+      row.eachCell((cell, col) => {
+        cell.fill = idx % 2 === 0 ? F.white : F.lgray;
+        cell.font = font('FF102347', 9);
+        cell.alignment = align(col <= 7 ? 'center' : 'left', 'middle', true);
+        cell.border = allHair;
+        if (col === 7) cell.font = font('FF102347', 9, true);
+      });
+    });
+
+    // Total row
+    const dlTotal = ws.addRow(['', '', '', '', '', 'TOTAL', totalHours.toFixed(2), '', '']);
+    dlTotal.height = 22;
+    dlTotal.eachCell((cell) => {
+      cell.fill = F.navy;
+      cell.font = font('FFFFFFFF', 10, true);
+      cell.alignment = align('center', 'middle');
+      cell.border = allMed;
+    });
+
+    // Signature section
+    ws.addRow([]).height = 16;
+    const sigRow = ws.addRow([]);
+    sigRow.height = 36;
+    ws.mergeCells(sigRow.number, 1, sigRow.number, 4);
+    ws.mergeCells(sigRow.number, 6, sigRow.number, 9);
+    const sig1 = ws.getCell(sigRow.number, 1);
+    const sig2 = ws.getCell(sigRow.number, 6);
+    sig1.value = 'Authorized Signatory\n(Project Manager)';
+    sig2.value = 'Date: ' + new Date().toLocaleDateString('en-GB');
+    [sig1, sig2].forEach(c => {
+      c.fill = F.light;
+      c.font = font('FF102347', 9, true);
+      c.alignment = align('left', 'middle', true);
+      c.border = { top: B.thin, bottom: B.thin, left: B.thin, right: B.thin };
+    });
+
+    // Generate file
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeProj = (project.code || project.name || 'Project').replace(/[^A-Za-z0-9]/g, '_');
+    a.download = `NLA_Project_Report_${safeProj}_${range.from}_to_${range.to}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // ============================================================
+  // Integration: inject "Project Report" tab into manager sidebar
+  // and add button in ManagerProjectsTab
+  // ============================================================
+  function injectIntoUI() {
+    // Add "Project Report" item to manager sidebar nav if not present
+    const addSidebarItem = () => {
+      const sidebar = document.querySelector('.sidebar');
+      if (!sidebar) return false;
+      if (sidebar.querySelector('[data-nav-id="project-report"]')) return true;
+
+      // Find existing nav items
+      const navItems = sidebar.querySelectorAll('.nav-item');
+      if (navItems.length === 0) return false;
+
+      // Find "Projects" nav item to insert after
+      let projectsItem = null;
+      navItems.forEach(item => {
+        if (item.textContent.trim().toLowerCase().includes('projects') &&
+            !item.textContent.toLowerCase().includes('report')) {
+          projectsItem = item;
+        }
+      });
+      if (!projectsItem) return false;
+
+      // Create new nav item
+      const newItem = projectsItem.cloneNode(true);
+      newItem.setAttribute('data-nav-id', 'project-report');
+
+      // Update label - find text node
+      newItem.querySelectorAll('span').forEach(span => {
+        if (span.textContent.trim().toLowerCase() === 'projects') {
+          span.textContent = 'Project Report';
+        }
+      });
+
+      // Update icon to "chart"
+      const svg = newItem.querySelector('svg');
+      if (svg) {
+        svg.innerHTML = '<path d="M2 22h20M3.41 22V9.58c0-.69.56-1.25 1.25-1.25h2.59c.69 0 1.25.56 1.25 1.25V22M11.79 22V5.46c0-.69.56-1.25 1.25-1.25h2.59c.69 0 1.25.56 1.25 1.25V22M20.16 22V13.7c0-.69-.56-1.25-1.25-1.25h-1.34"></path>';
+      }
+
+      // Remove active class if cloned
+      newItem.classList.remove('active');
+
+      // Replace existing click handler
+      newItem.onclick = (ev) => {
+        ev.preventDefault(); ev.stopPropagation();
+        window._showProjectReport = true;
+        window._projectReportInitialId = '';
+        renderProjectReportView();
+        // Mark this nav active
+        sidebar.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        newItem.classList.add('active');
+      };
+
+      projectsItem.parentNode.insertBefore(newItem, projectsItem.nextSibling);
+
+      // Listen for clicks on OTHER nav items to clean up our view
+      sidebar.querySelectorAll('.nav-item').forEach(item => {
+        if (item === newItem) return;
+        item.addEventListener('click', () => {
+          window._showProjectReport = false;
+          cleanupProjectReportView();
+        }, { capture: true });
+      });
+
+      return true;
+    };
+
+    // Try repeatedly until sidebar exists
+    if (!addSidebarItem()) {
+      setTimeout(injectIntoUI, 500);
+    }
+  }
+
+  // Mount/unmount the report view
+  let reactRoot = null;
+  let containerEl = null;
+
+  function renderProjectReportView() {
+    const mainContent = document.querySelector('.main-content') ||
+                        document.querySelector('main') ||
+                        document.querySelector('[class*="content"]');
+    if (!mainContent) return;
+
+    if (!containerEl) {
+      containerEl = document.createElement('div');
+      containerEl.id = 'nla-project-report-root';
+      containerEl.style.padding = '24px 28px';
+    }
+    // Hide original content, show our container
+    Array.from(mainContent.children).forEach(child => {
+      if (child !== containerEl) {
+        child.dataset.nlaHiddenBy = 'project-report';
+        child.style.display = 'none';
+      }
+    });
+    if (containerEl.parentNode !== mainContent) {
+      mainContent.appendChild(containerEl);
+    }
+    containerEl.style.display = 'block';
+
+    if (!reactRoot) {
+      reactRoot = ReactDOM.createRoot(containerEl);
+    }
+    reactRoot.render(e(window.ProjectReport, {
+      initialProjectId: window._projectReportInitialId || ''
+    }));
+  }
+
+  function cleanupProjectReportView() {
+    if (containerEl) {
+      containerEl.style.display = 'none';
+      // Restore hidden siblings
+      const mainContent = containerEl.parentNode;
+      if (mainContent) {
+        Array.from(mainContent.children).forEach(child => {
+          if (child.dataset.nlaHiddenBy === 'project-report') {
+            child.style.display = '';
+            delete child.dataset.nlaHiddenBy;
+          }
+        });
+      }
+    }
+  }
+
+  // Helper: open project report for a specific project ID (called from project card)
+  window.openProjectReport = function(projectId) {
+    window._showProjectReport = true;
+    window._projectReportInitialId = projectId || '';
+    renderProjectReportView();
+    // Update sidebar selection
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+      sidebar.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      const item = sidebar.querySelector('[data-nav-id="project-report"]');
+      if (item) item.classList.add('active');
+    }
+  };
+
+  // Wait for ReactDOM
+  function waitForReady() {
+    if (window.ReactDOM && window.React && window.SupaEntries) {
+      injectIntoUI();
+    } else {
+      setTimeout(waitForReady, 300);
+    }
+  }
+  waitForReady();
+
+  console.log('[NLA Project Report] Module loaded');
+})();
+
+</script>
+</body></html>
