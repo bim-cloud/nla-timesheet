@@ -2837,4 +2837,978 @@ const requestSetView=v=>{setView(v);persistEdit({view:v});};const title=`${greet
 })();
 
 </script>
+
+<script>
+/* =============================================================
+   NLA Timesheet - Finance & Employee Cost Module
+   Manager/Admin only. Salaries (AED/INR), Payroll, Expenses,
+   Revenue, P&L, and bar-chart dashboards.
+   Injected after main bundle; renders into content area.
+   ============================================================= */
+(function () {
+  'use strict';
+
+  function boot() {
+    if (!window.React || !window.ReactDOM || !window.SupaProfiles || !window.sb) {
+      return setTimeout(boot, 300);
+    }
+    const e = React.createElement;
+    const { useState, useEffect, useMemo } = React;
+    const Icon = window.Icon || (() => null);
+    const sb = window.sb;
+
+    // ---------- constants ----------
+    const DEFAULT_INR_PER_AED = 22.7;
+    const EXPENSE_CATS = [
+      { id: 'autodesk', label: 'Autodesk IDs / Licenses' },
+      { id: 'software', label: 'Software / Subscriptions' },
+      { id: 'office',   label: 'Office' },
+      { id: 'project',  label: 'Project-related' },
+      { id: 'other',    label: 'Other' },
+    ];
+
+    // ---------- helpers ----------
+    const pad = n => String(n).padStart(2, '0');
+    const monthKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+    const monthLabel = key => {
+      const [y, m] = key.split('-').map(Number);
+      return new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    };
+    const fmtMoney = (n) =>
+      Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+    const getRate = () => {
+      const v = parseFloat(localStorage.getItem('nla_inr_per_aed'));
+      return (v && v > 0) ? v : DEFAULT_INR_PER_AED;
+    };
+    const setRate = (v) => localStorage.setItem('nla_inr_per_aed', String(v));
+
+    // Convert any amount+currency to AED base
+    const toAED = (amount, currency, rate) =>
+      currency === 'INR' ? (Number(amount) / rate) : Number(amount);
+    const toINR = (amount, currency, rate) =>
+      currency === 'INR' ? Number(amount) : (Number(amount) * rate);
+
+    const dual = (amount, currency, rate) => {
+      const aed = toAED(amount, currency, rate);
+      const inr = toINR(amount, currency, rate);
+      return `AED ${fmtMoney(aed)} / INR ${fmtMoney(inr)}`;
+    };
+
+    // ---------- data layer ----------
+    const FinanceAPI = {
+      async profiles() {
+        const { data, error } = await sb.from('profiles').select('*').order('name');
+        if (error) { console.warn('profiles', error.message); return []; }
+        return data || [];
+      },
+      async salaryConfig() {
+        const { data, error } = await sb.from('salary_config').select('*');
+        if (error) { console.warn('salary_config', error.message); return []; }
+        return data || [];
+      },
+      async saveSalaryConfig(row) {
+        const { error } = await sb.from('salary_config')
+          .upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        if (error) { console.warn('saveSalaryConfig', error.message); throw error; }
+      },
+      async payments(period) {
+        const { data, error } = await sb.from('salary_payments').select('*').eq('period_month', period);
+        if (error) { console.warn('payments', error.message); return []; }
+        return data || [];
+      },
+      async savePayment(row) {
+        const { error } = await sb.from('salary_payments')
+          .upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: 'user_id,period_month' });
+        if (error) { console.warn('savePayment', error.message); throw error; }
+      },
+      async expenses(period) {
+        let q = sb.from('expenses').select('*').order('expense_date', { ascending: false });
+        if (period) q = q.eq('period_month', period);
+        const { data, error } = await q;
+        if (error) { console.warn('expenses', error.message); return []; }
+        return data || [];
+      },
+      async addExpense(row) {
+        const { error } = await sb.from('expenses').insert(row);
+        if (error) { console.warn('addExpense', error.message); throw error; }
+      },
+      async deleteExpense(id) {
+        const { error } = await sb.from('expenses').delete().eq('id', id);
+        if (error) { console.warn('deleteExpense', error.message); throw error; }
+      },
+      async revenue(period) {
+        let q = sb.from('revenue_records').select('*').order('received_date', { ascending: false });
+        if (period) q = q.eq('period_month', period);
+        const { data, error } = await q;
+        if (error) { console.warn('revenue', error.message); return []; }
+        return data || [];
+      },
+      async addRevenue(row) {
+        const { error } = await sb.from('revenue_records').insert(row);
+        if (error) { console.warn('addRevenue', error.message); throw error; }
+      },
+      async deleteRevenue(id) {
+        const { error } = await sb.from('revenue_records').delete().eq('id', id);
+        if (error) { console.warn('deleteRevenue', error.message); throw error; }
+      },
+      // hours per user for a given YYYY-MM
+      async hoursByUser(period) {
+        const [y, m] = period.split('-').map(Number);
+        const from = `${period}-01`;
+        const to = `${period}-${pad(new Date(y, m, 0).getDate())}`;
+        const rows = await window.SupaEntries.teamSummary(from, to);
+        const map = {};
+        (rows || []).forEach(r => {
+          map[r.user_id] = (map[r.user_id] || 0) + parseFloat(r.hours || 0);
+        });
+        return map;
+      },
+      // hours per project for a given period (for project cost analysis)
+      async hoursByProject(period) {
+        const [y, m] = period.split('-').map(Number);
+        const from = `${period}-01`;
+        const to = `${period}-${pad(new Date(y, m, 0).getDate())}`;
+        const rows = await window.SupaEntries.teamSummary(from, to);
+        const byProj = {};
+        (rows || []).forEach(r => {
+          const pid = r.project_id || 'unassigned';
+          if (!byProj[pid]) byProj[pid] = {};
+          byProj[pid][r.user_id] = (byProj[pid][r.user_id] || 0) + parseFloat(r.hours || 0);
+        });
+        return byProj;
+      },
+    };
+
+    // ---------- shared UI bits ----------
+    const card = (children, extra) =>
+      e('div', { className: 'card', style: Object.assign({ padding: 18 }, extra || {}) }, children);
+
+    const inputSt = {
+      border: '1px solid var(--border)', borderRadius: 7, padding: '6px 10px',
+      fontSize: 13, background: 'var(--surface)', color: 'var(--text)', width: '100%',
+    };
+    const lblSt = {
+      fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
+      textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4,
+    };
+
+    function StatCard({ icon, label, value, sub, color }) {
+      return card([
+        e('div', { key: 'h', style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 } },
+          e('div', { style: { width: 26, height: 26, borderRadius: 7,
+            background: (color || '#102347') + '18', color: color || '#102347',
+            display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+            e(Icon, { name: icon, size: 13, animated: true })),
+          e('span', { style: { fontSize: 10, fontWeight: 700, color: 'var(--text-muted)',
+            textTransform: 'uppercase', letterSpacing: '0.06em' } }, label)),
+        e('div', { key: 'v', style: { fontSize: 20, fontWeight: 800, color: color || '#102347',
+          fontVariantNumeric: 'tabular-nums', lineHeight: 1.15 } }, value),
+        sub && e('div', { key: 's', style: { fontSize: 11, color: 'var(--text-muted)', marginTop: 4 } }, sub),
+      ], { padding: '14px 16px' });
+    }
+
+    function BarChart({ data, height = 200, valueFmt }) {
+      const max = Math.max(1, ...data.map(d => d.value));
+      return e('div', {
+        style: { display: 'flex', alignItems: 'flex-end', gap: 12, height,
+          paddingTop: 24, overflowX: 'auto' }
+      }, data.length === 0
+        ? e('div', { style: { width: '100%', textAlign: 'center', color: 'var(--text-muted)',
+            fontSize: 12, alignSelf: 'center' } }, 'No data')
+        : data.map((d, i) =>
+          e('div', { key: i, style: { flex: 1, minWidth: 54, display: 'flex',
+            flexDirection: 'column', alignItems: 'center', gap: 6 } },
+            e('div', { style: { fontSize: 10, fontWeight: 700, color: '#102347',
+              fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } },
+              valueFmt ? valueFmt(d.value) : fmtMoney(d.value)),
+            e('div', { style: { width: '100%', maxWidth: 56,
+              height: Math.max(4, (d.value / max) * (height - 60)),
+              background: d.color || 'linear-gradient(180deg,#102347 0%,#1a3a6c 100%)',
+              borderRadius: '6px 6px 0 0', transition: 'height .5s ease',
+              position: 'relative', overflow: 'hidden' } },
+              e('div', { style: { position: 'absolute', top: 0, left: 0, right: 0,
+                height: 4, background: '#C9A84C' } })),
+            e('div', { style: { fontSize: 10, color: 'var(--text-muted)', textAlign: 'center',
+              maxWidth: 72, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+              d.label))
+        ));
+    }
+
+    // ============================================================
+    // Main Finance component
+    // ============================================================
+    function Finance() {
+      const projects = window.DATA.PROJECTS || [];
+      const [tab, setTab] = useState('dashboard');
+      const [period, setPeriod] = useState(monthKey(new Date()));
+      const [rate, setRateState] = useState(getRate());
+      const [profiles, setProfiles] = useState([]);
+      const [configs, setConfigs] = useState([]);
+      const [payments, setPayments] = useState([]);
+      const [expenses, setExpenses] = useState([]);
+      const [revenue, setRevenue] = useState([]);
+      const [hours, setHours] = useState({});
+      const [projHours, setProjHours] = useState({});
+      const [loading, setLoading] = useState(true);
+      const [toast, setToast] = useState('');
+
+      // month options: last 18 months
+      const monthOpts = useMemo(() => {
+        const out = [];
+        const d = new Date();
+        for (let i = 0; i < 18; i++) {
+          const k = monthKey(d);
+          out.push({ key: k, label: monthLabel(k) });
+          d.setMonth(d.getMonth() - 1);
+        }
+        return out;
+      }, []);
+
+      const employees = profiles.filter(p =>
+        (p.user_type || p.role_type || '') !== 'manager' || true); // include everyone
+
+      const reload = async () => {
+        setLoading(true);
+        try {
+          const [pf, cfg, pay, exp, rev, hrs, ph] = await Promise.all([
+            FinanceAPI.profiles(),
+            FinanceAPI.salaryConfig(),
+            FinanceAPI.payments(period),
+            FinanceAPI.expenses(period),
+            FinanceAPI.revenue(period),
+            FinanceAPI.hoursByUser(period),
+            FinanceAPI.hoursByProject(period),
+          ]);
+          setProfiles(pf); setConfigs(cfg); setPayments(pay);
+          setExpenses(exp); setRevenue(rev); setHours(hrs); setProjHours(ph);
+        } catch (err) { console.error('Finance reload', err); }
+        setLoading(false);
+      };
+      useEffect(() => { reload(); /* eslint-disable-next-line */ }, [period]);
+
+      const flash = (m) => { setToast(m); setTimeout(() => setToast(''), 2500); };
+
+      const cfgFor = uid => configs.find(c => c.user_id === uid);
+      const payFor = uid => payments.find(p => p.user_id === uid);
+
+      // gross for an employee in current period
+      const grossFor = (uid) => {
+        const c = cfgFor(uid);
+        if (!c) return { amount: 0, currency: 'AED', basis: '-' };
+        if (c.pay_type === 'hourly') {
+          const h = hours[uid] || 0;
+          return { amount: h * Number(c.amount), currency: c.currency,
+            basis: `${h.toFixed(1)}h - ${fmtMoney(c.amount)}` };
+        }
+        return { amount: Number(c.amount), currency: c.currency, basis: 'Fixed monthly' };
+      };
+
+      // -------- totals for dashboard --------
+      const totalSalaryAED = profiles.reduce((s, p) => {
+        const g = grossFor(p.id);
+        return s + toAED(g.amount, g.currency, rate);
+      }, 0);
+      const totalExpAED = expenses.reduce((s, x) =>
+        s + toAED(x.amount, x.currency, rate), 0);
+      const totalRevAED = revenue.reduce((s, r) =>
+        s + toAED(r.amount, r.currency, rate), 0);
+      const profitAED = totalRevAED - totalSalaryAED - totalExpAED;
+
+      // ============ TAB: Dashboard ============
+      const dashboardTab = () => {
+        const salaryBars = profiles
+          .map(p => {
+            const g = grossFor(p.id);
+            return { label: p.name || '?', value: toAED(g.amount, g.currency, rate) };
+          })
+          .filter(b => b.value > 0)
+          .sort((a, b) => b.value - a.value);
+
+        const expByCat = {};
+        expenses.forEach(x => {
+          const k = x.category || 'other';
+          expByCat[k] = (expByCat[k] || 0) + toAED(x.amount, x.currency, rate);
+        });
+        const expBars = EXPENSE_CATS
+          .map(c => ({ label: c.label.split(' ')[0], value: expByCat[c.id] || 0 }))
+          .filter(b => b.value > 0);
+
+        const plBars = [
+          { label: 'Revenue', value: totalRevAED, color: '#1d8a4a' },
+          { label: 'Salaries', value: totalSalaryAED, color: '#102347' },
+          { label: 'Expenses', value: totalExpAED, color: '#C9A84C' },
+          { label: 'Profit', value: Math.max(0, profitAED),
+            color: profitAED >= 0 ? '#1d8a4a' : '#c0392b' },
+        ];
+
+        // project-wise resource cost
+        const projCost = Object.entries(projHours).map(([pid, users]) => {
+          let cost = 0, hrs = 0;
+          Object.entries(users).forEach(([uid, h]) => {
+            hrs += h;
+            const c = cfgFor(uid);
+            if (c) {
+              const rateAED = c.pay_type === 'hourly'
+                ? toAED(c.amount, c.currency, rate)
+                : (toAED(c.amount, c.currency, rate) / 160); // approx monthly-hourly (160h)
+              cost += h * rateAED;
+            }
+          });
+          const proj = projects.find(p => p.id === pid);
+          return { label: proj ? (proj.code || proj.name) : pid, value: cost, hrs };
+        }).filter(p => p.value > 0).sort((a, b) => b.value - a.value);
+
+        return e('div', null,
+          e('div', { style: { display: 'grid',
+            gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 } },
+            e(StatCard, { icon: 'users', label: 'Total payroll',
+              value: 'AED ' + fmtMoney(totalSalaryAED),
+              sub: 'INR ' + fmtMoney(totalSalaryAED * rate), color: '#102347' }),
+            e(StatCard, { icon: 'briefcase', label: 'Expenses',
+              value: 'AED ' + fmtMoney(totalExpAED),
+              sub: 'INR ' + fmtMoney(totalExpAED * rate), color: '#C9A84C' }),
+            e(StatCard, { icon: 'trending', label: 'Revenue',
+              value: 'AED ' + fmtMoney(totalRevAED),
+              sub: 'INR ' + fmtMoney(totalRevAED * rate), color: '#1d8a4a' }),
+            e(StatCard, { icon: 'chart',
+              label: profitAED >= 0 ? 'Net profit' : 'Net loss',
+              value: 'AED ' + fmtMoney(Math.abs(profitAED)),
+              sub: 'INR ' + fmtMoney(Math.abs(profitAED) * rate),
+              color: profitAED >= 0 ? '#1d8a4a' : '#c0392b' })),
+
+          e('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr',
+            gap: 14, marginBottom: 14 } },
+            card([
+              e('h3', { key: 't', style: { margin: '0 0 4px', fontSize: 14, fontWeight: 600 } },
+                'Employee salary summary'),
+              e('div', { key: 's', style: { fontSize: 11, color: 'var(--text-muted)',
+                marginBottom: 8 } }, 'Gross pay this period (AED)'),
+              e(BarChart, { key: 'c', data: salaryBars }),
+            ]),
+            card([
+              e('h3', { key: 't', style: { margin: '0 0 4px', fontSize: 14, fontWeight: 600 } },
+                'Monthly expenses'),
+              e('div', { key: 's', style: { fontSize: 11, color: 'var(--text-muted)',
+                marginBottom: 8 } }, 'By category (AED)'),
+              e(BarChart, { key: 'c', data: expBars }),
+            ])),
+
+          e('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr',
+            gap: 14 } },
+            card([
+              e('h3', { key: 't', style: { margin: '0 0 4px', fontSize: 14, fontWeight: 600 } },
+                'Profit & Loss overview'),
+              e('div', { key: 's', style: { fontSize: 11, color: 'var(--text-muted)',
+                marginBottom: 8 } }, 'Revenue minus Salaries minus Expenses (AED)'),
+              e(BarChart, { key: 'c', data: plBars }),
+            ]),
+            card([
+              e('h3', { key: 't', style: { margin: '0 0 4px', fontSize: 14, fontWeight: 600 } },
+                'Project-wise resource cost'),
+              e('div', { key: 's', style: { fontSize: 11, color: 'var(--text-muted)',
+                marginBottom: 8 } }, 'Estimated labour cost per project (AED)'),
+              e(BarChart, { key: 'c', data: projCost }),
+            ])));
+      };
+
+      // ============ TAB: Salary Setup ============
+      const salaryTab = () => {
+        return card([
+          e('div', { key: 'rate', style: { display: 'flex', alignItems: 'center',
+            gap: 12, marginBottom: 16, paddingBottom: 14,
+            borderBottom: '1px solid var(--border)' } },
+            e('span', { style: lblSt }, 'Exchange rate'),
+            e('span', { style: { fontSize: 13 } }, '1 AED ='),
+            e('input', { type: 'number', step: '0.1', value: rate,
+              onChange: ev => { const v = parseFloat(ev.target.value) || DEFAULT_INR_PER_AED;
+                setRateState(v); setRate(v); },
+              style: { ...inputSt, width: 90, textAlign: 'center' } }),
+            e('span', { style: { fontSize: 13 } }, 'INR'),
+            e('span', { style: { fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' } },
+              'Used for all AED-INR conversions')),
+          e('table', { key: 'tbl', style: { width: '100%', borderCollapse: 'collapse',
+            fontSize: 13 } },
+            e('thead', null, e('tr', null,
+              ['Employee', 'Role', 'Pay type', 'Amount', 'Currency', 'Equivalent', ''].map(h =>
+                e('th', { key: h, style: { padding: '8px 12px', textAlign: 'left',
+                  fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: '0.06em', color: 'var(--text-muted)',
+                  borderBottom: '2px solid var(--border)' } }, h)))),
+            e('tbody', null, profiles.map(p =>
+              e(SalaryRow, { key: p.id, profile: p, config: cfgFor(p.id),
+                rate, onSave: async (row) => {
+                  await FinanceAPI.saveSalaryConfig(row);
+                  flash('Salary saved for ' + (p.name || 'employee'));
+                  reload();
+                } })))),
+        ]);
+      };
+
+      // ============ TAB: Payroll ============
+      const payrollTab = () => {
+        return card([
+          e('div', { key: 'h', style: { display: 'flex', justifyContent: 'space-between',
+            alignItems: 'center', marginBottom: 14 } },
+            e('div', null,
+              e('h3', { style: { margin: 0, fontSize: 14, fontWeight: 600 } },
+                'Monthly payroll - ' + monthLabel(period)),
+              e('div', { style: { fontSize: 11, color: 'var(--text-muted)', marginTop: 2 } },
+                'Hours auto-pulled from timesheets')),
+            e('div', { style: { fontSize: 12, fontWeight: 700, color: '#102347' } },
+              'Total: AED ' + fmtMoney(totalSalaryAED))),
+          e('table', { key: 't', style: { width: '100%', borderCollapse: 'collapse',
+            fontSize: 13 } },
+            e('thead', null, e('tr', null,
+              ['Employee', 'Hours', 'Basis', 'Gross', 'Equivalent', 'Status', ''].map(h =>
+                e('th', { key: h, style: { padding: '8px 12px', textAlign: 'left',
+                  fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: '0.06em', color: 'var(--text-muted)',
+                  borderBottom: '2px solid var(--border)' } }, h)))),
+            e('tbody', null, profiles.map(p => {
+              const g = grossFor(p.id);
+              const pay = payFor(p.id);
+              const status = pay ? pay.status : 'pending';
+              const isPaid = status === 'paid';
+              if (g.amount <= 0) return null;
+              return e('tr', { key: p.id,
+                style: { borderTop: '1px solid var(--border)' } },
+                e('td', { style: { padding: '10px 12px', fontWeight: 600 } }, p.name),
+                e('td', { style: { padding: '10px 12px', fontVariantNumeric: 'tabular-nums' } },
+                  (hours[p.id] || 0).toFixed(1) + 'h'),
+                e('td', { style: { padding: '10px 12px', color: 'var(--text-muted)',
+                  fontSize: 12 } }, g.basis),
+                e('td', { style: { padding: '10px 12px', fontWeight: 700,
+                  color: '#102347', fontVariantNumeric: 'tabular-nums' } },
+                  g.currency + ' ' + fmtMoney(g.amount)),
+                e('td', { style: { padding: '10px 12px', fontSize: 12,
+                  color: 'var(--text-muted)' } }, dual(g.amount, g.currency, rate)),
+                e('td', { style: { padding: '10px 12px' } },
+                  e('span', { style: { display: 'inline-flex', alignItems: 'center',
+                    gap: 5, padding: '4px 12px', borderRadius: 20, fontSize: 11,
+                    fontWeight: 700,
+                    background: isPaid ? 'rgba(29,138,74,0.12)' : 'rgba(234,88,12,0.12)',
+                    color: isPaid ? '#16794c' : '#c2410c' } },
+                    e('span', { style: { width: 7, height: 7, borderRadius: '50%',
+                      background: isPaid ? '#1d8a4a' : '#ea580c' } }),
+                    isPaid ? 'Paid' : 'Pending')),
+                e('td', { style: { padding: '10px 12px' } },
+                  e('button', {
+                    onClick: async () => {
+                      const next = isPaid ? 'pending' : 'paid';
+                      await FinanceAPI.savePayment({
+                        user_id: p.id, period_month: period,
+                        hours_worked: hours[p.id] || 0,
+                        pay_type: cfgFor(p.id)?.pay_type || 'monthly',
+                        rate: Number(cfgFor(p.id)?.amount || 0),
+                        currency: g.currency, gross_amount: g.amount,
+                        status: next,
+                        paid_date: next === 'paid'
+                          ? new Date().toISOString().slice(0, 10) : null,
+                      });
+                      flash((p.name || 'Employee') + ' marked ' + next);
+                      reload();
+                    },
+                    style: { background: isPaid ? 'transparent' : '#1d8a4a',
+                      color: isPaid ? 'var(--text-muted)' : 'white',
+                      border: isPaid ? '1px solid var(--border)' : 'none',
+                      padding: '5px 14px', borderRadius: 7, fontSize: 12,
+                      fontWeight: 600, cursor: 'pointer' } },
+                    isPaid ? 'Mark pending' : 'Mark paid')));
+            }))),
+        ]);
+      };
+
+      // ============ TAB: Expenses ============
+      const expensesTab = () =>
+        e(ExpensesPanel, { period, expenses, projects, rate,
+          onAdd: async (row) => { await FinanceAPI.addExpense(row);
+            flash('Expense added'); reload(); },
+          onDelete: async (id) => { await FinanceAPI.deleteExpense(id);
+            flash('Expense removed'); reload(); } });
+
+      // ============ TAB: Revenue ============
+      const revenueTab = () =>
+        e(RevenuePanel, { period, revenue, projects, rate,
+          onAdd: async (row) => { await FinanceAPI.addRevenue(row);
+            flash('Revenue added'); reload(); },
+          onDelete: async (id) => { await FinanceAPI.deleteRevenue(id);
+            flash('Revenue removed'); reload(); } });
+
+      const TABS = [
+        ['dashboard', 'Dashboard', 'chart'],
+        ['salary',    'Salary Setup', 'users'],
+        ['payroll',   'Payroll', 'clock'],
+        ['expenses',  'Expenses', 'briefcase'],
+        ['revenue',   'Revenue', 'trending'],
+      ];
+
+      return e('div', null,
+        // header
+        e('div', { style: { display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 } },
+          e('div', null,
+            e('h2', { style: { margin: 0, fontSize: 18, fontWeight: 600 } },
+              'Finance & Cost Management'),
+            e('div', { style: { fontSize: 12, color: 'var(--text-muted)', marginTop: 3 } },
+              'Salaries, expenses, revenue & profitability - ' + monthLabel(period))),
+          e('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+            e('select', { value: period,
+              onChange: ev => setPeriod(ev.target.value),
+              style: { ...inputSt, width: 'auto', cursor: 'pointer' } },
+              monthOpts.map(m => e('option', { key: m.key, value: m.key }, m.label))))),
+
+        // tab bar
+        e('div', { style: { display: 'flex', gap: 4, marginBottom: 16,
+          borderBottom: '1px solid var(--border)', paddingBottom: 0 } },
+          TABS.map(([id, label, ic]) =>
+            e('button', { key: id, onClick: () => setTab(id),
+              style: { display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 16px', border: 'none', background: 'none',
+                borderBottom: tab === id ? '2px solid #102347' : '2px solid transparent',
+                color: tab === id ? '#102347' : 'var(--text-muted)',
+                fontSize: 13, fontWeight: tab === id ? 700 : 500,
+                cursor: 'pointer', marginBottom: -1 } },
+              e(Icon, { name: ic, size: 13, animated: true }), label))),
+
+        toast && e('div', { style: { padding: '10px 14px', marginBottom: 12,
+          background: 'rgba(29,138,74,0.1)', color: '#16794c',
+          borderRadius: 8, fontSize: 13, fontWeight: 500 } }, toast),
+
+        loading
+          ? e('div', { style: { padding: 60, textAlign: 'center',
+              color: 'var(--text-muted)' } }, 'Loading finance data...')
+          : tab === 'dashboard' ? dashboardTab()
+          : tab === 'salary' ? salaryTab()
+          : tab === 'payroll' ? payrollTab()
+          : tab === 'expenses' ? expensesTab()
+          : revenueTab());
+    }
+
+    // ---------- Salary row (editable) ----------
+    function SalaryRow({ profile, config, rate, onSave }) {
+      const [payType, setPayType] = useState(config?.pay_type || 'monthly');
+      const [amount, setAmount] = useState(config?.amount != null ? String(config.amount) : '');
+      const [currency, setCurrency] = useState(config?.currency || 'AED');
+      const [saving, setSaving] = useState(false);
+
+      useEffect(() => {
+        setPayType(config?.pay_type || 'monthly');
+        setAmount(config?.amount != null ? String(config.amount) : '');
+        setCurrency(config?.currency || 'AED');
+      }, [config]);
+
+      const amt = parseFloat(amount) || 0;
+      const equiv = currency === 'AED'
+        ? `INR ${fmtMoney(amt * rate)}`
+        : `AED ${fmtMoney(amt / rate)}`;
+
+      const sel = { ...inputSt, width: 'auto', cursor: 'pointer' };
+
+      return e('tr', { style: { borderTop: '1px solid var(--border)' } },
+        e('td', { style: { padding: '10px 12px', fontWeight: 600 } }, profile.name),
+        e('td', { style: { padding: '10px 12px', color: 'var(--text-muted)',
+          fontSize: 12 } }, profile.role || '-'),
+        e('td', { style: { padding: '10px 12px' } },
+          e('select', { value: payType, onChange: ev => setPayType(ev.target.value),
+            style: sel },
+            e('option', { value: 'monthly' }, 'Monthly'),
+            e('option', { value: 'hourly' }, 'Hourly'))),
+        e('td', { style: { padding: '10px 12px' } },
+          e('input', { type: 'number', step: '0.01', value: amount,
+            placeholder: payType === 'hourly' ? 'Rate / hr' : 'Monthly',
+            onChange: ev => setAmount(ev.target.value),
+            style: { ...inputSt, width: 120 } })),
+        e('td', { style: { padding: '10px 12px' } },
+          e('select', { value: currency, onChange: ev => setCurrency(ev.target.value),
+            style: sel },
+            e('option', { value: 'AED' }, 'AED'),
+            e('option', { value: 'INR' }, 'INR'))),
+        e('td', { style: { padding: '10px 12px', fontSize: 12,
+          color: 'var(--text-muted)' } }, amt > 0 ? equiv : '-'),
+        e('td', { style: { padding: '10px 12px' } },
+          e('button', {
+            disabled: saving || amt <= 0,
+            onClick: async () => {
+              setSaving(true);
+              try {
+                await onSave({ user_id: profile.id, pay_type: payType,
+                  amount: amt, currency,
+                  effective_from: new Date().toISOString().slice(0, 10) });
+              } catch (e) { alert('Save failed: ' + (e.message || e)); }
+              setSaving(false);
+            },
+            style: { background: '#102347', color: 'white', border: 'none',
+              padding: '6px 14px', borderRadius: 7, fontSize: 12, fontWeight: 600,
+              cursor: amt > 0 ? 'pointer' : 'not-allowed', opacity: amt > 0 ? 1 : 0.5 } },
+            saving ? '...' : 'Save')));
+    }
+
+    // ---------- Expenses panel ----------
+    function ExpensesPanel({ period, expenses, projects, rate, onAdd, onDelete }) {
+      const [form, setForm] = useState({
+        category: 'autodesk', description: '', amount: '',
+        currency: 'AED', vendor: '', project_id: '',
+        expense_date: new Date().toISOString().slice(0, 10), recurring: false,
+      });
+      const [busy, setBusy] = useState(false);
+
+      const total = expenses.reduce((s, x) => s + toAED(x.amount, x.currency, rate), 0);
+      const sel = { ...inputSt, cursor: 'pointer' };
+
+      return e('div', null,
+        card([
+          e('h3', { key: 't', style: { margin: '0 0 14px', fontSize: 14,
+            fontWeight: 600 } }, 'Add expense'),
+          e('div', { key: 'r1', style: { display: 'grid',
+            gridTemplateColumns: '1fr 2fr 1fr 90px', gap: 10, marginBottom: 10 } },
+            e('div', null, e('label', { style: lblSt }, 'Category'),
+              e('select', { value: form.category,
+                onChange: ev => setForm({ ...form, category: ev.target.value }),
+                style: sel }, EXPENSE_CATS.map(c =>
+                  e('option', { key: c.id, value: c.id }, c.label)))),
+            e('div', null, e('label', { style: lblSt }, 'Description'),
+              e('input', { value: form.description,
+                placeholder: 'e.g. Revit 2025 license - 3',
+                onChange: ev => setForm({ ...form, description: ev.target.value }),
+                style: inputSt })),
+            e('div', null, e('label', { style: lblSt }, 'Amount'),
+              e('input', { type: 'number', step: '0.01', value: form.amount,
+                onChange: ev => setForm({ ...form, amount: ev.target.value }),
+                style: inputSt })),
+            e('div', null, e('label', { style: lblSt }, 'Currency'),
+              e('select', { value: form.currency,
+                onChange: ev => setForm({ ...form, currency: ev.target.value }),
+                style: sel },
+                e('option', { value: 'AED' }, 'AED'),
+                e('option', { value: 'INR' }, 'INR')))),
+          e('div', { key: 'r2', style: { display: 'grid',
+            gridTemplateColumns: '1fr 1fr 1fr auto', gap: 10, alignItems: 'flex-end' } },
+            e('div', null, e('label', { style: lblSt }, 'Vendor'),
+              e('input', { value: form.vendor,
+                onChange: ev => setForm({ ...form, vendor: ev.target.value }),
+                style: inputSt })),
+            e('div', null, e('label', { style: lblSt }, 'Project (optional)'),
+              e('select', { value: form.project_id,
+                onChange: ev => setForm({ ...form, project_id: ev.target.value }),
+                style: sel },
+                e('option', { value: '' }, '- None -'),
+                projects.map(p => e('option', { key: p.id, value: p.id },
+                  p.code || p.name)))),
+            e('div', null, e('label', { style: lblSt }, 'Date'),
+              e('input', { type: 'date', value: form.expense_date,
+                onChange: ev => setForm({ ...form, expense_date: ev.target.value }),
+                style: inputSt })),
+            e('button', {
+              disabled: busy || !form.description || !(parseFloat(form.amount) > 0),
+              onClick: async () => {
+                setBusy(true);
+                try {
+                  await onAdd({
+                    category: form.category, description: form.description,
+                    amount: parseFloat(form.amount), currency: form.currency,
+                    expense_date: form.expense_date,
+                    period_month: form.expense_date.slice(0, 7),
+                    project_id: form.project_id || null,
+                    vendor: form.vendor || null, recurring: form.recurring,
+                  });
+                  setForm({ ...form, description: '', amount: '', vendor: '' });
+                } catch (e) { alert('Failed: ' + (e.message || e)); }
+                setBusy(false);
+              },
+              style: { background: '#102347', color: 'white', border: 'none',
+                padding: '8px 18px', borderRadius: 7, fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', height: 36 } }, busy ? '...' : 'Add')),
+        ], { marginBottom: 14 }),
+        card([
+          e('div', { key: 'h', style: { display: 'flex',
+            justifyContent: 'space-between', marginBottom: 12 } },
+            e('h3', { style: { margin: 0, fontSize: 14, fontWeight: 600 } },
+              'Expenses - ' + monthLabel(period)),
+            e('span', { style: { fontSize: 13, fontWeight: 700, color: '#102347' } },
+              'Total: AED ' + fmtMoney(total) + ' / INR ' + fmtMoney(total * rate))),
+          expenses.length === 0
+            ? e('div', { style: { padding: 24, textAlign: 'center',
+                color: 'var(--text-muted)', fontSize: 12 } }, 'No expenses this month')
+            : e('table', { style: { width: '100%', borderCollapse: 'collapse',
+                fontSize: 13 } },
+                e('thead', null, e('tr', null,
+                  ['Date', 'Category', 'Description', 'Vendor', 'Project',
+                   'Amount', 'Equivalent', ''].map(h =>
+                    e('th', { key: h, style: { padding: '8px 12px', textAlign: 'left',
+                      fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                      letterSpacing: '0.06em', color: 'var(--text-muted)',
+                      borderBottom: '2px solid var(--border)' } }, h)))),
+                e('tbody', null, expenses.map(x => {
+                  const cat = EXPENSE_CATS.find(c => c.id === x.category);
+                  const proj = projects.find(p => p.id === x.project_id);
+                  return e('tr', { key: x.id,
+                    style: { borderTop: '1px solid var(--border)' } },
+                    e('td', { style: { padding: '9px 12px', color: 'var(--text-muted)',
+                      fontFamily: 'var(--font-mono)', fontSize: 12 } },
+                      x.expense_date),
+                    e('td', { style: { padding: '9px 12px' } },
+                      e('span', { style: { fontSize: 11, padding: '2px 8px',
+                        borderRadius: 12, background: 'rgba(16,35,71,0.08)',
+                        color: '#102347', fontWeight: 600 } },
+                        cat ? cat.label.split(' ')[0] : x.category)),
+                    e('td', { style: { padding: '9px 12px' } }, x.description),
+                    e('td', { style: { padding: '9px 12px',
+                      color: 'var(--text-muted)' } }, x.vendor || '-'),
+                    e('td', { style: { padding: '9px 12px',
+                      color: 'var(--text-muted)', fontSize: 12 } },
+                      proj ? (proj.code || proj.name) : '-'),
+                    e('td', { style: { padding: '9px 12px', fontWeight: 700,
+                      color: '#102347', fontVariantNumeric: 'tabular-nums' } },
+                      x.currency + ' ' + fmtMoney(x.amount)),
+                    e('td', { style: { padding: '9px 12px', fontSize: 12,
+                      color: 'var(--text-muted)' } },
+                      dual(x.amount, x.currency, rate)),
+                    e('td', { style: { padding: '9px 12px' } },
+                      e('button', { onClick: () => onDelete(x.id),
+                        style: { background: 'none', border: '1px solid #fca5a5',
+                          color: '#c0392b', padding: '3px 10px', borderRadius: 6,
+                          fontSize: 11, cursor: 'pointer' } }, 'Del')));
+                }))),
+        ]));
+    }
+
+    // ---------- Revenue panel ----------
+    function RevenuePanel({ period, revenue, projects, rate, onAdd, onDelete }) {
+      const [form, setForm] = useState({
+        source: '', description: '', amount: '', currency: 'AED',
+        project_id: '', received_date: new Date().toISOString().slice(0, 10),
+      });
+      const [busy, setBusy] = useState(false);
+      const total = revenue.reduce((s, r) => s + toAED(r.amount, r.currency, rate), 0);
+      const sel = { ...inputSt, cursor: 'pointer' };
+
+      return e('div', null,
+        card([
+          e('h3', { key: 't', style: { margin: '0 0 14px', fontSize: 14,
+            fontWeight: 600 } }, 'Record revenue / income'),
+          e('div', { key: 'r', style: { display: 'grid',
+            gridTemplateColumns: '1fr 1fr 1fr 90px 1fr auto', gap: 10,
+            alignItems: 'flex-end' } },
+            e('div', null, e('label', { style: lblSt }, 'Source'),
+              e('input', { value: form.source, placeholder: 'Client / invoice',
+                onChange: ev => setForm({ ...form, source: ev.target.value }),
+                style: inputSt })),
+            e('div', null, e('label', { style: lblSt }, 'Description'),
+              e('input', { value: form.description,
+                onChange: ev => setForm({ ...form, description: ev.target.value }),
+                style: inputSt })),
+            e('div', null, e('label', { style: lblSt }, 'Amount'),
+              e('input', { type: 'number', step: '0.01', value: form.amount,
+                onChange: ev => setForm({ ...form, amount: ev.target.value }),
+                style: inputSt })),
+            e('div', null, e('label', { style: lblSt }, 'Currency'),
+              e('select', { value: form.currency,
+                onChange: ev => setForm({ ...form, currency: ev.target.value }),
+                style: sel },
+                e('option', { value: 'AED' }, 'AED'),
+                e('option', { value: 'INR' }, 'INR'))),
+            e('div', null, e('label', { style: lblSt }, 'Project'),
+              e('select', { value: form.project_id,
+                onChange: ev => setForm({ ...form, project_id: ev.target.value }),
+                style: sel },
+                e('option', { value: '' }, '- None -'),
+                projects.map(p => e('option', { key: p.id, value: p.id },
+                  p.code || p.name)))),
+            e('button', {
+              disabled: busy || !form.source || !(parseFloat(form.amount) > 0),
+              onClick: async () => {
+                setBusy(true);
+                try {
+                  await onAdd({
+                    source: form.source, description: form.description || null,
+                    amount: parseFloat(form.amount), currency: form.currency,
+                    received_date: form.received_date,
+                    period_month: form.received_date.slice(0, 7),
+                    project_id: form.project_id || null,
+                  });
+                  setForm({ ...form, source: '', description: '', amount: '' });
+                } catch (e) { alert('Failed: ' + (e.message || e)); }
+                setBusy(false);
+              },
+              style: { background: '#1d8a4a', color: 'white', border: 'none',
+                padding: '8px 18px', borderRadius: 7, fontSize: 13,
+                fontWeight: 600, cursor: 'pointer', height: 36 } },
+              busy ? '...' : 'Add')),
+        ], { marginBottom: 14 }),
+        card([
+          e('div', { key: 'h', style: { display: 'flex',
+            justifyContent: 'space-between', marginBottom: 12 } },
+            e('h3', { style: { margin: 0, fontSize: 14, fontWeight: 600 } },
+              'Revenue - ' + monthLabel(period)),
+            e('span', { style: { fontSize: 13, fontWeight: 700, color: '#1d8a4a' } },
+              'Total: AED ' + fmtMoney(total) + ' / INR ' + fmtMoney(total * rate))),
+          revenue.length === 0
+            ? e('div', { style: { padding: 24, textAlign: 'center',
+                color: 'var(--text-muted)', fontSize: 12 } }, 'No revenue recorded')
+            : e('table', { style: { width: '100%', borderCollapse: 'collapse',
+                fontSize: 13 } },
+                e('thead', null, e('tr', null,
+                  ['Date', 'Source', 'Description', 'Project', 'Amount',
+                   'Equivalent', ''].map(h =>
+                    e('th', { key: h, style: { padding: '8px 12px', textAlign: 'left',
+                      fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                      letterSpacing: '0.06em', color: 'var(--text-muted)',
+                      borderBottom: '2px solid var(--border)' } }, h)))),
+                e('tbody', null, revenue.map(r => {
+                  const proj = projects.find(p => p.id === r.project_id);
+                  return e('tr', { key: r.id,
+                    style: { borderTop: '1px solid var(--border)' } },
+                    e('td', { style: { padding: '9px 12px', color: 'var(--text-muted)',
+                      fontFamily: 'var(--font-mono)', fontSize: 12 } },
+                      r.received_date || '-'),
+                    e('td', { style: { padding: '9px 12px', fontWeight: 600 } },
+                      r.source),
+                    e('td', { style: { padding: '9px 12px',
+                      color: 'var(--text-muted)' } }, r.description || '-'),
+                    e('td', { style: { padding: '9px 12px',
+                      color: 'var(--text-muted)', fontSize: 12 } },
+                      proj ? (proj.code || proj.name) : '-'),
+                    e('td', { style: { padding: '9px 12px', fontWeight: 700,
+                      color: '#1d8a4a', fontVariantNumeric: 'tabular-nums' } },
+                      r.currency + ' ' + fmtMoney(r.amount)),
+                    e('td', { style: { padding: '9px 12px', fontSize: 12,
+                      color: 'var(--text-muted)' } },
+                      dual(r.amount, r.currency, rate)),
+                    e('td', { style: { padding: '9px 12px' } },
+                      e('button', { onClick: () => onDelete(r.id),
+                        style: { background: 'none', border: '1px solid #fca5a5',
+                          color: '#c0392b', padding: '3px 10px', borderRadius: 6,
+                          fontSize: 11, cursor: 'pointer' } }, 'Del')));
+                }))),
+        ]));
+    }
+
+    window.NLAFinance = Finance;
+
+    // ============================================================
+    // Inject sidebar item (manager/admin only) + render view
+    // ============================================================
+    let root = null, container = null;
+
+    function isManagerUser() {
+      // The app sets manager view when user.type === 'manager'.
+      // sessionStorage flag is set in that path.
+      if (sessionStorage.getItem('nla_mgr_unlocked') === '1') return true;
+      // also peek at the cached login user
+      try {
+        const raw = localStorage.getItem('nla_user') ||
+                    sessionStorage.getItem('nla_user');
+        if (raw) {
+          const u = JSON.parse(raw);
+          if (u && (u.type === 'manager' || u.role_type === 'manager' ||
+                    String(u.role || '').toLowerCase().includes('director') ||
+                    String(u.role || '').toLowerCase().includes('admin'))) return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+
+    function renderFinance() {
+      const main = document.querySelector('.main-content') ||
+                   document.querySelector('main') ||
+                   document.querySelector('.content')?.parentElement ||
+                   document.querySelector('[class*="content"]');
+      if (!main) return;
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'nla-finance-root';
+        container.style.padding = '24px 28px';
+      }
+      Array.from(main.children).forEach(c => {
+        if (c !== container) {
+          c.dataset.nlaHiddenBy = 'finance';
+          c.style.display = 'none';
+        }
+      });
+      if (container.parentNode !== main) main.appendChild(container);
+      container.style.display = 'block';
+      if (!root) root = ReactDOM.createRoot(container);
+      root.render(React.createElement(window.NLAFinance));
+    }
+
+    function cleanupFinance() {
+      if (!container) return;
+      container.style.display = 'none';
+      const main = container.parentNode;
+      if (main) {
+        Array.from(main.children).forEach(c => {
+          if (c.dataset.nlaHiddenBy === 'finance') {
+            c.style.display = '';
+            delete c.dataset.nlaHiddenBy;
+          }
+        });
+      }
+    }
+
+    function injectSidebar() {
+      const sidebar = document.querySelector('.sidebar');
+      if (!sidebar) return setTimeout(injectSidebar, 500);
+
+      // Only for managers/admins
+      if (!isManagerUser()) return setTimeout(injectSidebar, 1500);
+
+      if (sidebar.querySelector('[data-nav-id="finance"]')) return;
+
+      const items = sidebar.querySelectorAll('.nav-item');
+      if (!items.length) return setTimeout(injectSidebar, 500);
+
+      // anchor after "Reports" or "Users" if present, else last item
+      let anchor = null;
+      items.forEach(it => {
+        const t = it.textContent.trim().toLowerCase();
+        if (t.includes('reports') || t.includes('users')) anchor = it;
+      });
+      anchor = anchor || items[items.length - 1];
+
+      const node = anchor.cloneNode(true);
+      node.setAttribute('data-nav-id', 'finance');
+      node.classList.remove('active');
+      node.querySelectorAll('span').forEach(s => {
+        if (s.children.length === 0 && s.textContent.trim()) s.textContent = 'Finance';
+      });
+      const svg = node.querySelector('svg');
+      if (svg) svg.innerHTML =
+        '<path d="M2 8.5h20M6 16.5h2M10.5 16.5h3.5"></path>' +
+        '<path d="M22 7.81v8.38c0 3.34-.85 4.18-4.23 4.18H6.23C2.85 20.37 2 19.53 2 16.19V7.81c0-3.34.85-4.18 4.23-4.18h11.54C21.15 3.63 22 4.47 22 7.81z"></path>';
+
+      node.onclick = (ev) => {
+        ev.preventDefault(); ev.stopPropagation();
+        window._nlaFinanceOpen = true;
+        renderFinance();
+        sidebar.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        node.classList.add('active');
+      };
+      anchor.parentNode.insertBefore(node, anchor.nextSibling);
+
+      sidebar.querySelectorAll('.nav-item').forEach(it => {
+        if (it === node) return;
+        it.addEventListener('click', () => {
+          window._nlaFinanceOpen = false;
+          cleanupFinance();
+        }, { capture: true });
+      });
+    }
+
+    injectSidebar();
+    // Re-check on view changes (employee - manager unlock etc.)
+    setInterval(() => {
+      const sb2 = document.querySelector('.sidebar');
+      if (sb2 && !sb2.querySelector('[data-nav-id="finance"]') && isManagerUser()) {
+        injectSidebar();
+      }
+    }, 3000);
+
+    console.log('[NLA Finance] Module loaded');
+  }
+
+  boot();
+})();
+
+</script>
 </body></html>
